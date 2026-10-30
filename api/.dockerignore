@@ -1,0 +1,5 @@
+**/bin/
+**/obj/
+**/*.user
+fly.toml
+docker-compose.yml
