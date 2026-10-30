@@ -1,16 +1,17 @@
 /**
- * "Tasks changed somewhere else" — a reminder button, the edit screen — so a
- * list that is already on screen refetches. One event, no payload: the list
+ * "Something changed somewhere else" — a reminder button, an edit screen, a
+ * capture — so a list already on screen refetches. No payload: the list
  * re-reads the server rather than trying to patch itself.
  */
+export type Topic = "tasks" | "entries";
 type Listener = () => void;
-const listeners = new Set<Listener>();
+const listeners: Record<Topic, Set<Listener>> = { tasks: new Set(), entries: new Set() };
 
-export function onTasksChanged(fn: Listener): () => void {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
+export function onChanged(topic: Topic, fn: Listener): () => void {
+  listeners[topic].add(fn);
+  return () => listeners[topic].delete(fn);
 }
 
-export function tasksChanged(): void {
-  for (const fn of listeners) fn();
+export function changed(topic: Topic): void {
+  for (const fn of listeners[topic]) fn();
 }

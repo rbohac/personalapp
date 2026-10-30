@@ -6,7 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { SignIn } from "../components/SignIn";
 import { AuthProvider, useAuth } from "../lib/auth";
-import { tasksChanged } from "../lib/events";
+import { changed } from "../lib/events";
 import { refreshPushRegistration } from "../lib/push";
 import { ensureNotificationPermission, registerReminderCategory, reminderActionOf } from "../lib/reminders";
 import { getTask, inputOf, setDone, updateTask } from "../lib/tasks";
@@ -35,7 +35,7 @@ async function follow(r: Notifications.NotificationResponse) {
     } else {
       router.push({ pathname: "/task/[id]", params: { id: a.taskId } });
     }
-    tasksChanged();
+    changed("tasks");
   } catch (e) {
     Alert.alert("Reminder not updated", e instanceof Error ? e.message : "The server didn't take it.");
   }
@@ -94,6 +94,8 @@ function Gate() {
     <Stack screenOptions={{ headerTintColor: c.accent, headerStyle: { backgroundColor: c.bg }, headerTitleStyle: { color: c.ink }, contentStyle: { backgroundColor: c.bg } }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="task/[id]" options={{ presentation: "modal", title: "Task" }} />
+      <Stack.Screen name="area/[id]" options={{ title: "" }} />
+      <Stack.Screen name="entry/[id]" options={{ presentation: "modal", title: "Entry" }} />
     </Stack>
   );
 }

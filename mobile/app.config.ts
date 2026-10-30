@@ -42,6 +42,13 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-secure-store",
     ["expo-notifications", { color: "#FF6B4A" }],
+    [
+      "expo-speech-recognition",
+      {
+        microphonePermission: "Bo listens only after you tap the mic, to write down what you say.",
+        speechRecognitionPermission: "What you say is turned into text on this phone so Bo can log it.",
+      },
+    ],
     ...(googleIosClientId
       ? [["@react-native-google-signin/google-signin", { iosUrlScheme: reversedClientId }] as [string, object]]
       : []),

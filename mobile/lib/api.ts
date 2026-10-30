@@ -7,6 +7,12 @@ export type Task = components["schemas"]["TaskDto"];
 export type TaskInput = components["schemas"]["TaskInput"];
 export type User = components["schemas"]["UserDto"];
 export type Session = components["schemas"]["SessionDto"];
+export type Area = components["schemas"]["AreaDefinition"];
+export type AreaField = components["schemas"]["AreaField"];
+export type Entry = components["schemas"]["EntryDto"];
+export type EntryInput = components["schemas"]["EntryInput"];
+export type Proposal = components["schemas"]["Proposal"];
+export type CaptureResult = components["schemas"]["CaptureResult"];
 
 /**
  * The typed client. Every path, body and response type comes from the API's

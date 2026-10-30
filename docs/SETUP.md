@@ -11,6 +11,7 @@ Values you'll collect along the way:
 | Neon connection string | step 1 | Fly secret `ConnectionStrings__Bo` |
 | Google iOS client id | step 4 | `mobile/app.config.ts` **and** Fly secret `Auth__GoogleClientIds__0` |
 | EAS project id | step 5 | `mobile/app.config.ts` |
+| Anthropic API key | step 4b | Fly secret `ANTHROPIC_API_KEY` |
 | Fly deploy token | step 8 | GitHub secret `FLY_API_TOKEN` |
 
 ---
@@ -35,13 +36,14 @@ brew install flyctl
 fly auth signup
 ```
 
-Fly app names are global, so `bo-api` may be taken. From `api/`:
+Fly app names are global, so `bo-api` may be taken. Run every `fly` command
+from the **repository root** — the image needs both `api/` and `areas/`:
 
 ```bash
 fly apps create bo-api-bohac
 ```
 
-Put the name you got into `app = "…"` in `api/fly.toml` (and change
+Put the name you got into `app = "…"` in `fly.toml` (and change
 `primary_region` if Chicago isn't near you). Then set the secrets — the
 signing key is random and you never need to see it again:
 
@@ -95,6 +97,26 @@ which Fly's certificate covers.
 ```bash
 fly secrets set Auth__GoogleClientIds__0='<ios client id>'
 ```
+
+## 4b. Reading captures — Anthropic API key
+
+The Log screen sends what you type or say to Claude, which reads it using the
+guides in `areas/` and answers in a fixed JSON shape. Without a key, Bo still
+reads plain readings like "120/80 pulse 72", using the patterns in `area.json`,
+but nothing in words ("remind me to…", "took my shot").
+
+1. console.anthropic.com → sign up with your personal Gmail (separate from
+   any Spearfish organization) → add a payment method → **API keys** →
+   create one named `bo-api`.
+2. Give it to the API:
+
+```bash
+fly secrets set ANTHROPIC_API_KEY='<key>'
+```
+
+Each capture is one short request: a fraction of a cent. To use a
+different model, set `Capture__Model` the same way (the default is
+`claude-opus-5-5`).
 
 ## 5. Expo — new personal account
 

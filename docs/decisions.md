@@ -37,8 +37,6 @@ supersede it with a new one that says what changed and why.
 
 ## Next up (not built)
 
-- Trackers: blood pressure, medications, workouts, walks — a generic
-  `trackers` + `entries` model, with a one-tap quick-log screen.
 - Schedules and adherence ("did I do it when I meant to?"), derived from
   entries and never stored.
 - An offline outbox for writes made without signal.
@@ -58,3 +56,34 @@ supersede it with a new one that says what changed and why.
   expose. Revisit when openapi-typescript supports 7.
 - **Packages moved to current versions** (Npgsql 10, DbUp 7, ASP.NET 10.0.14)
   — the first pins pulled a `Microsoft.OpenApi` with a known vulnerability.
+
+## 2026-10-30 — Areas and capture
+
+- **An area is a folder** (`areas/<id>/area.json` + `README.md`), not a table
+  or a class. The folder is the one definition: the API validates and
+  summarizes from it, the app builds forms from it, the parser reads it. A new
+  area is two files and a deploy.
+- **Entries are JSON documents in Postgres** (`entries.data`, one row each),
+  not JSON files on disk. Files on a Fly volume would need their own backups
+  and would tie the API to one machine; a jsonb column keeps the "JSON
+  document" shape with Neon's backups and point-in-time restore. Small data
+  sets, so no per-area tables. If an area outgrows that, it gets a table.
+- **Tasks stay tasks**, with a `list` column (personal, home, cranberry). The
+  tasks area declares the lists. A task needs reminders, completion and
+  editing that entries don't, so it isn't an entry.
+- **Capture proposes, the person saves.** `POST /capture` writes nothing;
+  saving goes through the ordinary entry and task endpoints. A misheard number
+  never lands without being seen.
+- **The model reads the area READMEs.** Claude (`claude-opus-5-5` at low
+  effort, structured output) returns `{area, at, fields[], task}` per thing
+  mentioned. Values come back as strings and are validated like hand-entered
+  ones, so the schema stays the same for every area. The newest entry in each
+  area goes along too, so "took my shot" can reuse the last medication. A
+  refusal falls back server-side to `claude-opus-4-8`.
+- **Patterns are the fallback, not the first pass.** A regex reads "131/85"
+  but loses "this morning" and "left arm", so `area.json` patterns run only
+  when the model isn't configured or can't be reached.
+- **Voice is on-device** (`expo-speech-recognition`). The API only ever sees
+  text, and the same capture path serves typed and spoken input.
+- **Shots record supply too** (`event`: taken, ran-out, refilled). That reads
+  "when I took them, when I'm out" as running out of supply.

@@ -73,7 +73,8 @@ The session's network goes through a TLS proxy that containers built inside
 the session don't trust, so a plain `docker build` fails on its first package
 restore (`UntrustedRoot`). The wrapper builds a throwaway copy of the
 Dockerfile that trusts the proxy. Your real Dockerfile is never touched, so
-CI and Fly build exactly what's committed.
+CI and Fly build exactly what's committed. For Bo, from the repo root:
+`docker-build-sandbox -f api/Dockerfile -t bo-api .`
 
 ## Still needs you, at any network level
 

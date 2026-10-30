@@ -1,0 +1,15 @@
+{
+  "id": "walks",
+  "name": "Walks",
+  "icon": "walk-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "done", "label": "Did it", "type": "boolean", "trueLabel": "Done", "falseLabel": "Skipped", "default": true, "required": true },
+    { "key": "minutes", "label": "Minutes", "type": "integer", "unit": "min", "min": 1, "max": 600 },
+    { "key": "distance", "label": "Distance", "type": "number", "unit": "mi", "min": 0.1, "max": 50 },
+    { "key": "steps", "label": "Steps", "type": "integer", "min": 1, "max": 100000 },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{done} · {minutes} min · {distance} mi · {steps} steps",
+  "patterns": []
+}

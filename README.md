@@ -1,13 +1,15 @@
 # Bo
 
-A personal app: tasks and reminders today; health tracking (blood pressure,
-medications, workouts, walks), schedules and adherence next; home automation
+A personal app: say or type what happened ("took my BP, 120/80, pulse 72"),
+and Bo logs it — blood pressure, medications, shots, workouts, walks, and
+tasks on separate lists. Schedules and adherence next; home automation
 eventually. One user for now, built to grow.
 
 | Part | What | Where it runs |
 | --- | --- | --- |
 | `mobile/` | Expo (SDK 58) + expo-router, TypeScript | iPhone, via TestFlight and EAS Update |
 | `api/` | .NET 10 minimal API, Dapper, plain-SQL migrations | Docker container on Fly.io at `api.bohac.dev` |
+| `areas/` | One folder per thing tracked: `area.json` (fields) + `README.md` (guidance) | Shipped inside the API image |
 | database | Postgres | Neon |
 
 Recreating the Claude cloud environment that works on this repo is
@@ -33,6 +35,15 @@ iPhone (Bo) ──HTTPS + bearer token──▶ api.bohac.dev (Fly, .NET) ──
   types from it, so a server change shows up as a type error in the app.
 - **Reminders** are stored on the task (`remindAt`) and scheduled on the phone
   as local notifications with Done / Snooze buttons.
+- **Areas are folders, not code.** [`areas/`](areas/README.md) defines what
+  each area records. The API validates against it, renders each entry's
+  one-line summary from it, and the app builds its forms from it. Adding an
+  area is two files and a deploy: no migration, no app release.
+- **Capture** (`POST /capture`) turns what was typed or said into proposals.
+  Claude reads `areas/_capture.md` plus every area's README and answers in a
+  fixed JSON schema, and every value goes through the same validation as a
+  hand-entered one. The app shows the proposals and saves only what you keep.
+  Voice is on-device speech recognition; the server only ever sees text.
 
 ## Day to day
 
@@ -60,7 +71,7 @@ After changing an endpoint, regenerate the app's types:
 cd mobile && BO_API_URL=http://localhost:5080 npm run api:types
 ```
 
-Ship: merge to `main`. The API deploys to Fly from GitHub Actions. App
+Ship: merge to `main`. The API deploys to Fly from GitHub Actions (or `fly deploy` from the repo root). App
 JavaScript ships over the air with `eas update --channel production`; a new
 native module or permission needs a new build (`eas build -p ios --profile production --auto-submit`).
 

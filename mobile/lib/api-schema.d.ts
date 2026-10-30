@@ -78,6 +78,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/areas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AreaDefinition"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CaptureRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CaptureResult"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tasks": {
         parameters: {
             query?: never;
@@ -89,6 +172,7 @@ export interface paths {
             parameters: {
                 query?: {
                     filter?: string;
+                    list?: string;
                 };
                 header?: never;
                 path?: never;
@@ -427,10 +511,289 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    area?: string;
+                    limit?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntryDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EntryInput"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntryDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/entries/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntryDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntryDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EntryInput"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntryDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AreaDefinition: {
+            id: string;
+            name: string;
+            icon?: string;
+            kind?: string;
+            fields?: components["schemas"]["AreaField"][];
+            lists?: components["schemas"]["AreaList"][];
+            summary?: string;
+            patterns?: string[];
+            guide?: string;
+        };
+        AreaField: {
+            key: string;
+            label: string;
+            type: string;
+            unit?: null | string;
+            /** Format: double */
+            min?: null | number | string;
+            /** Format: double */
+            max?: null | number | string;
+            options?: null | string[];
+            trueLabel?: null | string;
+            falseLabel?: null | string;
+            default?: null | components["schemas"]["JsonElement"];
+            required?: boolean;
+        };
+        AreaList: {
+            id: string;
+            label: string;
+        };
+        CaptureRequest: {
+            text: string;
+            timeZone?: null | string;
+            /** @default typed */
+            source: string;
+        };
+        CaptureResult: {
+            proposals: components["schemas"]["Proposal"][];
+            parser: string;
+            note: null | string;
+        };
+        EntryDto: {
+            /** Format: uuid */
+            id: string;
+            area: string;
+            /** Format: date-time */
+            at: string;
+            data: Record<string, unknown>;
+            summary: string;
+            source: string;
+            raw: null | string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        EntryInput: {
+            area: string;
+            data: Record<string, unknown>;
+            /** Format: date-time */
+            at?: null | string;
+            /** @default manual */
+            source: string;
+            raw?: null | string;
+        };
         GoogleSignInRequest: {
             idToken: string;
         };
@@ -444,6 +807,19 @@ export interface components {
             errors?: {
                 [key: string]: string[];
             };
+        };
+        JsonElement: unknown;
+        Proposal: {
+            kind: string;
+            area: string;
+            areaName: string;
+            icon: string;
+            /** Format: date-time */
+            at: string;
+            data: Record<string, unknown>;
+            summary: string;
+            task: null | components["schemas"]["TaskProposal"];
+            problems: string[];
         };
         RegisterDeviceRequest: {
             installationId: string;
@@ -461,6 +837,7 @@ export interface components {
             id: string;
             title: string;
             notes: null | string;
+            list: string;
             /** Format: date-time */
             dueAt: null | string;
             /** Format: date-time */
@@ -479,6 +856,16 @@ export interface components {
             dueAt?: null | string;
             /** Format: date-time */
             remindAt?: null | string;
+            /** @default personal */
+            list: string;
+        };
+        TaskProposal: {
+            title: string;
+            list: string;
+            /** Format: date-time */
+            dueAt: null | string;
+            /** Format: date-time */
+            remindAt: null | string;
         };
         UserDto: {
             /** Format: uuid */

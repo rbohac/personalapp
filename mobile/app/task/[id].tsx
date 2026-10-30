@@ -5,7 +5,8 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 
 import type { Task } from "../../lib/api";
 import { PRESET_LABEL, presetTime, whenLabel, type ReminderPreset } from "../../lib/dates";
-import { tasksChanged } from "../../lib/events";
+import { taskLists } from "../../lib/areas";
+import { changed } from "../../lib/events";
 import { deleteTask, getTask, setDone, updateTask } from "../../lib/tasks";
 import { usePalette, type Palette } from "../../lib/theme";
 
@@ -20,6 +21,8 @@ export default function TaskScreen() {
   const [notes, setNotes] = useState("");
   const [remindAt, setRemindAt] = useState<string | null>(null);
   const [dueAt, setDueAt] = useState<string | null>(null);
+  const [list, setList] = useState("personal");
+  const [lists, setLists] = useState<{ id: string; label: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -30,6 +33,7 @@ export default function TaskScreen() {
         setNotes(t.notes ?? "");
         setRemindAt(t.remindAt);
         setDueAt(t.dueAt);
+        setList(t.list);
       })
       .catch((e) => {
         Alert.alert("Couldn't open task", e instanceof Error ? e.message : "");
@@ -37,11 +41,15 @@ export default function TaskScreen() {
       });
   }, [id]);
 
+  useEffect(() => {
+    taskLists().then(setLists).catch(() => undefined);
+  }, []);
+
   async function save() {
     setSaving(true);
     try {
-      await updateTask(id, { title: title.trim(), notes: notes.trim() || null, remindAt, dueAt });
-      tasksChanged();
+      await updateTask(id, { title: title.trim(), notes: notes.trim() || null, list, remindAt, dueAt });
+      changed("tasks");
       router.back();
     } catch (e) {
       Alert.alert("Not saved", e instanceof Error ? e.message : "The server didn't take it.");
@@ -54,7 +62,7 @@ export default function TaskScreen() {
     if (!task) return;
     try {
       setTask(await setDone(id, !task.doneAt));
-      tasksChanged();
+      changed("tasks");
     } catch (e) {
       Alert.alert("Not changed", e instanceof Error ? e.message : "");
     }
@@ -69,7 +77,7 @@ export default function TaskScreen() {
         onPress: async () => {
           try {
             await deleteTask(id);
-            tasksChanged();
+            changed("tasks");
             router.back();
           } catch (e) {
             Alert.alert("Not deleted", e instanceof Error ? e.message : "");
@@ -115,6 +123,17 @@ export default function TaskScreen() {
         style={[s.notes, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
         multiline
       />
+
+      <View style={[s.section, { borderColor: c.line, backgroundColor: c.card }]}>
+        <Text style={[s.sectionLabel, { color: c.muted }]}>List</Text>
+        <View style={s.chips}>
+          {lists.map((l) => (
+            <Pressable key={l.id} onPress={() => setList(l.id)} style={[s.chip, { borderColor: list === l.id ? c.accent : c.line }]}>
+              <Text style={{ color: list === l.id ? c.accent : c.ink, fontSize: 14 }}>{l.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
 
       <WhenPicker
         c={c}

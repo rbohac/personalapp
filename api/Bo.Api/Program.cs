@@ -1,4 +1,6 @@
+using Bo.Api.Areas;
 using Bo.Api.Auth;
+using Bo.Api.Capture;
 using Bo.Api.Data;
 using Bo.Api.Endpoints;
 
@@ -8,6 +10,9 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddBoDatabase(builder.Configuration);
 builder.Services.AddBoAuth(builder.Configuration);
+// The areas folder is loaded once; a malformed area.json stops startup.
+builder.Services.AddSingleton(AreaCatalog.Load(AreaCatalog.FindDirectory(builder.Configuration, builder.Environment.ContentRootPath)));
+builder.Services.AddSingleton<CaptureParser>();
 
 var app = builder.Build();
 
@@ -27,5 +32,8 @@ app.MapGet("/healthz", () => Results.Ok(new { ok = true })).ExcludeFromDescripti
 app.MapAuthEndpoints();
 app.MapTaskEndpoints();
 app.MapDeviceEndpoints();
+app.MapAreaEndpoints();
+app.MapEntryEndpoints();
+app.MapCaptureEndpoints();
 
 app.Run();

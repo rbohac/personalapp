@@ -1,160 +1,218 @@
-import { useCallback, useEffect, useState } from "react";
-import { Alert, AppState, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
-import type { Task } from "../../lib/api";
-import { isPast, whenLabel } from "../../lib/dates";
-import { onTasksChanged } from "../../lib/events";
-import { createTask, listTasks, setDone, type TaskFilter } from "../../lib/tasks";
+import { AreaIcon } from "../../components/AreaIcon";
+import type { CaptureResult, Entry, Proposal } from "../../lib/api";
+import { getAreas, listEntries } from "../../lib/areas";
+import { capture, saveProposal, type CaptureSource } from "../../lib/capture";
+import { whenLabel } from "../../lib/dates";
+import { onChanged } from "../../lib/events";
 import { usePalette, type Palette } from "../../lib/theme";
+import { useDictation } from "../../lib/voice";
 
-export default function TasksScreen() {
+/**
+ * Log: say or type what happened, see what Bo understood, keep what's right.
+ * Nothing is saved until Save — a misheard number never lands silently.
+ */
+export default function LogScreen() {
   const c = usePalette();
-  const [filter, setFilter] = useState<Exclude<TaskFilter, "all">>("open");
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
+  const [text, setText] = useState("");
+  const [source, setSource] = useState<CaptureSource>("typed");
+  const [reading, setReading] = useState(false);
+  const [result, setResult] = useState<CaptureResult | null>(null);
+  const [read, setRead] = useState("");
+  const [skip, setSkip] = useState<Set<number>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [recent, setRecent] = useState<Entry[]>([]);
+  const [icons, setIcons] = useState<Record<string, string>>({});
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const dictation = useDictation((t) => {
+    setText(t);
+    setSource("voice");
+  });
+
+  const loadRecent = useCallback(async () => {
     try {
-      setTasks(await listTasks(filter));
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load tasks.");
-    } finally {
-      setLoading(false);
+      setRecent(await listEntries(undefined, 15));
+    } catch {
+      /* the capture box still works; the list fills in next time */
     }
-  }, [filter]);
+  }, []);
 
-  // Refetch on focus, when the app comes back, and when something else changed tasks.
-  useFocusEffect(useCallback(() => void load(), [load]));
+  useFocusEffect(useCallback(() => void loadRecent(), [loadRecent]));
+  useEffect(() => onChanged("entries", () => void loadRecent()), [loadRecent]);
   useEffect(() => {
-    const app = AppState.addEventListener("change", (s) => s === "active" && void load());
-    const off = onTasksChanged(() => void load());
-    return () => {
-      app.remove();
-      off();
-    };
-  }, [load]);
+    getAreas().then((as) => setIcons(Object.fromEntries(as.map((a) => [a.id, a.icon ?? ""])))).catch(() => undefined);
+  }, []);
 
-  async function add() {
-    const title = draft.trim();
-    if (!title) return;
-    setDraft("");
+  async function readIt(words = text, from = source) {
+    const t = words.trim();
+    if (!t) return;
+    setReading(true);
     try {
-      await createTask({ title });
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      if (filter === "open") void load();
+      const r = await capture(t, from);
+      setResult(r);
+      setRead(t);
+      // Anything that can't be saved as is starts unticked.
+      setSkip(new Set(r.proposals.flatMap((p, i) => (p.problems.length ? [i] : []))));
     } catch (e) {
-      setDraft(title);
-      Alert.alert("Not added", e instanceof Error ? e.message : "The server didn't take it.");
+      Alert.alert("Couldn't read that", e instanceof Error ? e.message : "The server didn't answer.");
+    } finally {
+      setReading(false);
     }
   }
 
-  async function toggle(t: Task) {
-    // Optimistic: the row leaves the list now, and comes back if the call fails.
-    setTasks((all) => all.filter((x) => x.id !== t.id));
+  // When dictation stops on its own, read what was heard straight away.
+  const wasListening = useRef(false);
+  useEffect(() => {
+    if (wasListening.current && !dictation.listening && text.trim()) void readIt(text, "voice");
+    wasListening.current = dictation.listening;
+    // readIt is stable enough for this: it reads the latest text passed in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dictation.listening]);
+
+  function reset() {
+    setText("");
+    setSource("typed");
+    setResult(null);
+    setSkip(new Set());
+  }
+
+  async function saveAll() {
+    if (!result) return;
+    const keep = result.proposals.filter((p, i) => !skip.has(i) && p.problems.length === 0);
+    setSaving(true);
     try {
-      await setDone(t.id, !t.doneAt);
-      if (!t.doneAt) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      for (const p of keep) await saveProposal(p, read, source);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      reset();
+      void loadRecent();
     } catch (e) {
-      void load();
-      Alert.alert("Not changed", e instanceof Error ? e.message : "The server didn't take it.");
+      Alert.alert("Not everything saved", e instanceof Error ? e.message : "The server didn't take it.");
+    } finally {
+      setSaving(false);
     }
   }
+
+  /** A proposal with something missing opens the entry form with what was understood filled in. */
+  function fix(p: Proposal) {
+    if (p.kind !== "entry") return;
+    router.push({ pathname: "/entry/[id]", params: { id: "new", area: p.area, at: p.at, data: JSON.stringify(p.data), raw: read, source } });
+  }
+
+  const keepCount = result ? result.proposals.filter((p, i) => !skip.has(i) && p.problems.length === 0).length : 0;
 
   return (
-    <View style={[s.root, { backgroundColor: c.bg }]}>
-      <View style={[s.addRow, { backgroundColor: c.card, borderColor: c.line }]}>
-        <Ionicons name="add" size={22} color={c.accent} />
+    <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
+      <View style={[s.box, { backgroundColor: c.card, borderColor: dictation.listening ? c.accent : c.line }]}>
         <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          onSubmitEditing={add}
-          placeholder="Add a task"
+          value={text}
+          onChangeText={(t) => {
+            setText(t);
+            setSource("typed");
+          }}
+          placeholder="Took my BP, 120/80, pulse 72"
           placeholderTextColor={c.muted}
-          returnKeyType="done"
-          style={[s.addInput, { color: c.ink }]}
+          style={[s.input, { color: c.ink }]}
+          multiline
+          blurOnSubmit
+          returnKeyType="go"
+          onSubmitEditing={() => void readIt()}
         />
+        <View style={s.boxActions}>
+          <Pressable
+            onPress={() => (dictation.listening ? dictation.stop() : void dictation.start())}
+            style={[s.mic, { backgroundColor: dictation.listening ? c.accent : c.bg }]}
+            accessibilityLabel={dictation.listening ? "Stop listening" : "Speak"}
+          >
+            <Ionicons name={dictation.listening ? "stop" : "mic"} size={24} color={dictation.listening ? c.accentInk : c.accent} />
+          </Pressable>
+          <Pressable onPress={() => void readIt()} disabled={reading || !text.trim()} style={[s.read, { backgroundColor: c.accent, opacity: reading || !text.trim() ? 0.4 : 1 }]}>
+            {reading ? <ActivityIndicator color={c.accentInk} /> : <Text style={[s.readText, { color: c.accentInk }]}>Read</Text>}
+          </Pressable>
+        </View>
       </View>
+      {dictation.listening ? <Text style={[s.hint, { color: c.accent }]}>Listening…</Text> : null}
+      {dictation.error ? <Text style={[s.hint, { color: c.danger }]}>{dictation.error}</Text> : null}
 
-      <View style={s.segments}>
-        {(["open", "done"] as const).map((f) => (
-          <Pressable key={f} onPress={() => setFilter(f)} style={[s.segment, filter === f && { backgroundColor: c.accent }]}>
-            <Text style={[s.segmentText, { color: filter === f ? c.accentInk : c.muted }]}>{f === "open" ? "To do" : "Done"}</Text>
+      {result ? (
+        <View style={s.section}>
+          {result.note ? <Text style={[s.note, { color: c.muted }]}>{result.note}</Text> : null}
+          {result.proposals.length === 0 ? <Text style={[s.note, { color: c.ink }]}>Nothing to log in that. Try saying it another way.</Text> : null}
+          {result.proposals.map((p, i) => (
+            <ProposalCard
+              key={i}
+              p={p}
+              c={c}
+              kept={!skip.has(i) && p.problems.length === 0}
+              onToggle={() => setSkip((prev) => { const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next; })}
+              onFix={() => fix(p)}
+            />
+          ))}
+          <View style={s.row}>
+            <Pressable onPress={reset} style={[s.secondary, { borderColor: c.line }]}>
+              <Text style={{ color: c.muted, fontSize: 16 }}>Discard</Text>
+            </Pressable>
+            <Pressable onPress={() => void saveAll()} disabled={saving || keepCount === 0} style={[s.primary, { backgroundColor: c.accent, opacity: saving || keepCount === 0 ? 0.4 : 1 }]}>
+              {saving ? <ActivityIndicator color={c.accentInk} /> : <Text style={[s.readText, { color: c.accentInk }]}>Save {keepCount || ""}</Text>}
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      <View style={s.section}>
+        <Text style={[s.heading, { color: c.muted }]}>RECENT</Text>
+        {recent.length === 0 ? <Text style={[s.note, { color: c.muted }]}>Nothing logged yet.</Text> : null}
+        {recent.map((e) => (
+          <Pressable key={e.id} onPress={() => router.push({ pathname: "/entry/[id]", params: { id: e.id } })} style={[s.recent, { borderBottomColor: c.line }]}>
+            <AreaIcon name={icons[e.area] ?? ""} c={c} size={18} />
+            <Text style={[s.recentText, { color: c.ink }]} numberOfLines={1}>{e.summary}</Text>
+            <Text style={{ color: c.muted, fontSize: 13 }}>{whenLabel(e.at)}</Text>
           </Pressable>
         ))}
       </View>
-
-      {error ? <Text style={[s.error, { color: c.danger }]}>{error}</Text> : null}
-
-      <FlatList
-        data={tasks}
-        keyExtractor={(t) => t.id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={c.accent} />}
-        contentContainerStyle={tasks.length === 0 ? s.emptyWrap : undefined}
-        ListEmptyComponent={
-          loading ? undefined : <Text style={[s.empty, { color: c.muted }]}>{filter === "open" ? "Nothing to do. Nice." : "Nothing finished yet."}</Text>
-        }
-        renderItem={({ item }) => <Row task={item} c={c} onToggle={() => toggle(item)} />}
-      />
-    </View>
+    </ScrollView>
   );
 }
 
-function Row({ task, c, onToggle }: { task: Task; c: Palette; onToggle: () => void }) {
-  const done = !!task.doneAt;
-  const meta: { icon: keyof typeof Ionicons.glyphMap; text: string; late: boolean }[] = [];
-  if (task.remindAt && !done) meta.push({ icon: "notifications-outline", text: whenLabel(task.remindAt), late: isPast(task.remindAt) });
-  if (task.dueAt && !done) meta.push({ icon: "calendar-outline", text: `Due ${whenLabel(task.dueAt)}`, late: isPast(task.dueAt) });
-  if (done && task.doneAt) meta.push({ icon: "checkmark", text: whenLabel(task.doneAt), late: false });
-
+function ProposalCard({ p, c, kept, onToggle, onFix }: { p: Proposal; c: Palette; kept: boolean; onToggle: () => void; onFix: () => void }) {
+  const blocked = p.problems.length > 0;
+  const when = p.task?.remindAt ? `Remind ${whenLabel(p.task.remindAt)}` : p.task?.dueAt ? `Due ${whenLabel(p.task.dueAt)}` : p.kind === "entry" ? whenLabel(p.at) : null;
   return (
-    <Pressable
-      onPress={() => router.push({ pathname: "/task/[id]", params: { id: task.id } })}
-      style={[s.row, { borderBottomColor: c.line }]}
-    >
-      <Pressable onPress={onToggle} hitSlop={12} accessibilityLabel={done ? "Mark not done" : "Mark done"}>
-        <Ionicons name={done ? "checkmark-circle" : "ellipse-outline"} size={26} color={done ? c.accent : c.muted} />
-      </Pressable>
-      <View style={s.rowBody}>
-        <Text style={[s.title, { color: done ? c.muted : c.ink }, done && s.struck]} numberOfLines={2}>
-          {task.title}
-        </Text>
-        {meta.length ? (
-          <View style={s.metaRow}>
-            {meta.map((m) => (
-              <View key={m.icon} style={s.meta}>
-                <Ionicons name={m.icon} size={13} color={m.late ? c.late : c.muted} />
-                <Text style={[s.metaText, { color: m.late ? c.late : c.muted }]}>{m.text}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
+    <Pressable onPress={blocked ? onFix : onToggle} style={[s.card, { backgroundColor: c.card, borderColor: kept ? c.accent : c.line }]}>
+      <AreaIcon name={p.icon} c={c} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ color: c.muted, fontSize: 13 }}>{p.areaName}{when ? ` · ${when}` : ""}</Text>
+        <Text style={{ color: c.ink, fontSize: 17, fontWeight: "600" }}>{p.summary}</Text>
+        {p.problems.map((x) => (
+          <Text key={x} style={{ color: c.danger, fontSize: 13 }}>{x}</Text>
+        ))}
+        {blocked && p.kind === "entry" ? <Text style={{ color: c.accent, fontSize: 13 }}>Tap to fill in and save</Text> : null}
       </View>
+      {!blocked ? <Ionicons name={kept ? "checkmark-circle" : "ellipse-outline"} size={24} color={kept ? c.accent : c.muted} /> : null}
     </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1 },
-  addRow: { flexDirection: "row", alignItems: "center", gap: 8, margin: 16, marginBottom: 8, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1 },
-  addInput: { flex: 1, height: 48, fontSize: 17 },
-  segments: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
-  segment: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999 },
-  segmentText: { fontSize: 14, fontWeight: "600" },
-  error: { paddingHorizontal: 16, paddingBottom: 8 },
-  emptyWrap: { flexGrow: 1, alignItems: "center", justifyContent: "center" },
-  empty: { fontSize: 16 },
-  row: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
-  rowBody: { flex: 1, gap: 4 },
-  title: { fontSize: 17 },
-  struck: { textDecorationLine: "line-through" },
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  meta: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaText: { fontSize: 13 },
+  body: { padding: 16, gap: 12 },
+  box: { borderRadius: 16, borderWidth: 1.5, padding: 12, gap: 10 },
+  input: { fontSize: 19, minHeight: 72, textAlignVertical: "top" },
+  boxActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  mic: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
+  read: { height: 44, paddingHorizontal: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  readText: { fontSize: 16, fontWeight: "600" },
+  hint: { fontSize: 14, paddingHorizontal: 4 },
+  section: { gap: 10, marginTop: 8 },
+  note: { fontSize: 14 },
+  card: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1.5 },
+  row: { flexDirection: "row", gap: 10 },
+  secondary: { flex: 1, height: 48, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  primary: { flex: 2, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  heading: { fontSize: 12, fontWeight: "600", marginTop: 8 },
+  recent: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
+  recentText: { flex: 1, fontSize: 16 },
 });

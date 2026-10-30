@@ -8,9 +8,10 @@ import { cancelReminder, syncReminder, syncReminders } from "./reminders";
  */
 export type TaskFilter = "open" | "done" | "all";
 
-export async function listTasks(filter: TaskFilter = "open"): Promise<Task[]> {
-  const tasks = must(await api.GET("/tasks", { params: { query: { filter } } }));
-  if (filter === "open") await syncReminders(tasks).catch(() => undefined);
+/** `list` narrows to one list. Reminders are re-synced only from the full open list, never a narrowed one. */
+export async function listTasks(filter: TaskFilter = "open", list?: string): Promise<Task[]> {
+  const tasks = must(await api.GET("/tasks", { params: { query: { filter, list } } }));
+  if (filter === "open" && !list) await syncReminders(tasks).catch(() => undefined);
   return tasks;
 }
 
@@ -32,7 +33,7 @@ export async function updateTask(id: string, input: TaskInput): Promise<Task> {
 
 /** The whole form as it stands, from a task — for edits that change one field. */
 export function inputOf(t: Task): TaskInput {
-  return { title: t.title, notes: t.notes, dueAt: t.dueAt, remindAt: t.remindAt };
+  return { title: t.title, notes: t.notes, list: t.list, dueAt: t.dueAt, remindAt: t.remindAt };
 }
 
 export async function setDone(id: string, done: boolean): Promise<Task> {

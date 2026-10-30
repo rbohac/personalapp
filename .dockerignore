@@ -1,0 +1,6 @@
+# Docker builds from the repo root; only api/ and areas/ belong in the context.
+**
+!api/Bo.Api/**
+!areas/**
+**/bin/
+**/obj/

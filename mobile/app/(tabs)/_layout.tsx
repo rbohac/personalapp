@@ -18,7 +18,15 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="index"
+        options={{ title: "Log", tabBarIcon: ({ color, size }) => <Ionicons name="mic-outline" color={String(color)} size={size} /> }}
+      />
+      <Tabs.Screen
+        name="tasks"
         options={{ title: "Tasks", tabBarIcon: ({ color, size }) => <Ionicons name="checkbox-outline" color={String(color)} size={size} /> }}
+      />
+      <Tabs.Screen
+        name="areas"
+        options={{ title: "Areas", tabBarIcon: ({ color, size }) => <Ionicons name="grid-outline" color={String(color)} size={size} /> }}
       />
       <Tabs.Screen
         name="settings"

@@ -1,0 +1,15 @@
+{
+  "id": "shots",
+  "name": "Shots",
+  "icon": "eyedrop-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "event", "label": "Event", "type": "choice", "options": ["taken", "ran-out", "refilled"], "default": "taken", "required": true },
+    { "key": "medication", "label": "Medication", "type": "text", "required": true },
+    { "key": "dose", "label": "Dose", "type": "text" },
+    { "key": "site", "label": "Site", "type": "choice", "options": ["left-abdomen", "right-abdomen", "left-thigh", "right-thigh", "left-arm", "right-arm", "other"] },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{event} · {medication} · {dose} · {site}",
+  "patterns": []
+}

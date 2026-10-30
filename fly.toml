@@ -1,10 +1,11 @@
 # Fly.io app for Bo's API. Deployed by .github/workflows/api.yml on merges to
-# main, or by hand with `fly deploy` from this directory.
+# main, or by hand with `fly deploy` from the repository root (the image needs
+# both api/ and areas/).
 app = "bo-api-bohac"   # Fly app names are global; see docs/SETUP.md step 2
 primary_region = "ord"   # Chicago. Change to the region nearest you before the first deploy.
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "api/Dockerfile"
 
 [env]
   ASPNETCORE_ENVIRONMENT = "Production"
