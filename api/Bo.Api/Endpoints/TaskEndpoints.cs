@@ -14,7 +14,7 @@ public record TaskDto(
 /// sends the form as it stands, so "clear the reminder" is just remindAt: null
 /// and there is no partial-update ambiguity to get wrong.
 /// </summary>
-public record TaskInput(string Title, string? Notes, DateTimeOffset? DueAt, DateTimeOffset? RemindAt);
+public record TaskInput(string Title, string? Notes = null, DateTimeOffset? DueAt = null, DateTimeOffset? RemindAt = null);
 
 public static class TaskEndpoints
 {

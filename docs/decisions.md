@@ -44,3 +44,17 @@ supersede it with a new one that says what changed and why.
 - An offline outbox for writes made without signal.
 - Apple Health: write BP readings, read workouts and walks.
 - Integrations: inbound webhooks, Home Assistant over Tailscale.
+
+## 2026-10-30 — First run
+
+- **The API was compiled and run end to end** against a local Postgres:
+  migrations applied, every endpoint exercised, and `lib/api-schema.d.ts`
+  regenerated from the live `/openapi/v1.json`. The regeneration immediately
+  caught a contract mismatch (optional `TaskInput` fields were required),
+  fixed in the API with parameter defaults — the reason the client is
+  generated rather than written.
+- **TypeScript is pinned to 5.9 in `mobile/`.** `openapi-typescript` calls the
+  TypeScript compiler API, which TypeScript 7 (the native compiler) doesn't
+  expose. Revisit when openapi-typescript supports 7.
+- **Packages moved to current versions** (Npgsql 10, DbUp 7, ASP.NET 10.0.14)
+  — the first pins pulled a `Microsoft.OpenApi` with a known vulnerability.
