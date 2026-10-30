@@ -10,6 +10,9 @@ eventually. One user for now, built to grow.
 | `api/` | .NET 10 minimal API, Dapper, plain-SQL migrations | Docker container on Fly.io at `api.bohac.dev` |
 | database | Postgres | Neon |
 
+Recreating the Claude cloud environment that works on this repo is
+[`docs/cloud-environment/`](docs/cloud-environment/README.md).
+
 First-time setup — accounts, keys, DNS, the first build — is
 [`docs/SETUP.md`](docs/SETUP.md). Why it is shaped this way is
 [`docs/decisions.md`](docs/decisions.md).
