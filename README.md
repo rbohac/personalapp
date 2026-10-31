@@ -40,8 +40,8 @@ iPhone (Bo) ──HTTPS + bearer token──▶ api.bohac.dev (Fly, .NET) ──
   one-line summary from it, and the app builds its forms from it. Adding an
   area is two files and a deploy: no migration, no app release.
 - **Capture** (`POST /capture`) turns what was typed or said into proposals.
-  Claude reads `areas/_capture.md` plus every area's README and answers in a
-  fixed JSON schema, and every value goes through the same validation as a
+  Claude Haiku 5.5 reads `areas/_capture.md` (rules and worked examples) plus
+  every area's README and answers in a fixed JSON schema, and every value goes through the same validation as a
   hand-entered one. The app shows the proposals and saves only what you keep.
   Voice is on-device speech recognition; the server only ever sees text.
 

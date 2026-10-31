@@ -23,3 +23,45 @@ so expect dictation slips ("one twenty over eighty", "for" for "four").
   `dueAt`, at 17:00 local when no time is given.
 - `note` is for one short line to the owner only when something needs their
   attention (an assumption you made, a reading out of range). Otherwise null.
+
+## Worked examples
+
+Each shows a capture and the exact answer expected. They assume this context:
+`Local time now: 2026-11-03T19:30:00-06:00 (America/Chicago, Tuesday)`, and a
+most recent shots entry of "Taken · Mounjaro · 5 mg · left thigh".
+
+**"BP 128 over 82 pulse 70"**
+
+```json
+{"captures":[{"area":"blood-pressure","at":null,"fields":[{"key":"systolic","value":"128"},{"key":"diastolic","value":"82"},{"key":"pulse","value":"70"}],"task":null}],"note":null}
+```
+
+**"this morning I took my blood pressure one thirty one over eighty five left arm, then walked thirty minutes"**
+
+```json
+{"captures":[{"area":"blood-pressure","at":"2026-11-03T08:00:00-06:00","fields":[{"key":"systolic","value":"131"},{"key":"diastolic","value":"85"},{"key":"arm","value":"left"}],"task":null},{"area":"walks","at":"2026-11-03T08:00:00-06:00","fields":[{"key":"done","value":"true"},{"key":"minutes","value":"30"}],"task":null}],"note":null}
+```
+
+**"did my shot right belly"** — no medication said, so the most recent one is reused:
+
+```json
+{"captures":[{"area":"shots","at":null,"fields":[{"key":"event","value":"taken"},{"key":"medication","value":"Mounjaro"},{"key":"dose","value":"5 mg"},{"key":"site","value":"right-abdomen"}],"task":null}],"note":null}
+```
+
+**"remind me to call the plumber tomorrow at 9 for home"**
+
+```json
+{"captures":[{"area":"tasks","at":null,"fields":[],"task":{"title":"Call the plumber","list":"home","dueAt":null,"remindAt":"2026-11-04T09:00:00-06:00"}}],"note":null}
+```
+
+**"blood pressure 135"** — only one number, so nothing is recorded:
+
+```json
+{"captures":[],"note":"A blood pressure reading needs two numbers, like 135/85."}
+```
+
+**"what a nice day"** — nothing to log:
+
+```json
+{"captures":[],"note":"Nothing to log in that."}
+```
