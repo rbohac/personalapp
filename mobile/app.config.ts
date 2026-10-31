@@ -14,7 +14,7 @@ import type { ExpoConfig } from "expo/config";
  * Either can be overridden from the environment for experiments.
  */
 const GOOGLE_IOS_CLIENT_ID = "646118810214-u298ds3die86438sh1kvvsit01hq1scu.apps.googleusercontent.com";
-const EAS_PROJECT_ID = "";
+const EAS_PROJECT_ID = "00f9b088-d002-4ca0-9724-069d4f7ad9df";
 
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || GOOGLE_IOS_CLIENT_ID;
 const reversedClientId = googleIosClientId.split(".").reverse().join(".");
@@ -23,6 +23,8 @@ const projectId = process.env.EAS_PROJECT_ID || EAS_PROJECT_ID;
 const config: ExpoConfig = {
   name: "Bo",
   slug: "bo",
+  // The personal Expo account, separate from Spearfish's.
+  owner: "rbohac-personal",
   version: "0.1.0",
   scheme: "bo",
   orientation: "portrait",
