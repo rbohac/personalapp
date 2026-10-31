@@ -176,6 +176,9 @@ reminder** proves notifications work.
 eas build -p ios --profile production --auto-submit
 ```
 
+(The App Store Connect app is "Bo" under Apple ID `6829293126`, recorded as
+`ascAppId` in `mobile/eas.json`, so submits go to it without asking.)
+
 The first submit creates the App Store Connect app record. **App Store names
 are unique across all of Apple**, so "Bo" alone is almost certainly taken —
 give App Store Connect something like "Bo — Bohac". The name under the icon on
