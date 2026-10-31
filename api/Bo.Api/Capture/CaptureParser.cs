@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Anthropic;
-using Anthropic.Models.Beta.Messages;
+using Anthropic.Models.Messages;
 using Bo.Api.Areas;
 
 namespace Bo.Api.Capture;
@@ -20,7 +20,13 @@ public sealed class CaptureParser(AreaCatalog catalog, IConfiguration config, IL
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly string? _apiKey = config["Capture:AnthropicApiKey"] is { Length: > 0 } k ? k : Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-    private readonly string _model = config["Capture:Model"] is { Length: > 0 } m ? m : "claude-opus-5-5";
+    // Haiku: a capture is short extraction against fixed rules, the work the
+    // Haiku line is built for, at a small fraction of a larger model's price.
+    private readonly string _model = config["Capture:Model"] is { Length: > 0 } m ? m : "claude-haiku-5-5";
+    // Effort is how much the model thinks before answering. medium is Haiku's
+    // default and the level Anthropic recommends where instructions must be
+    // followed exactly ("never invent a number"); low is cheaper and faster.
+    private readonly string _effort = config["Capture:Effort"] is { Length: > 0 } e ? e : "medium";
     private AnthropicClient? _client;
 
     public async Task<CaptureResult> ParseAsync(CaptureRequest req, IReadOnlyList<(string Area, string Summary, DateTime At)> recent, CancellationToken ct)
@@ -56,22 +62,26 @@ public sealed class CaptureParser(AreaCatalog catalog, IConfiguration config, IL
         if (recent.Count == 0) user.AppendLine("- (none yet)");
         user.AppendLine().AppendLine("<capture>").AppendLine(text).AppendLine("</capture>");
 
-        var response = await _client.Beta.Messages.Create(new MessageCreateParams
+        // No temperature (Haiku 5.5 rejects sampling parameters) and no
+        // prefill: the JSON shape comes from structured output. MaxTokens
+        // leaves room for thinking, which counts against it.
+        var response = await _client.Messages.Create(new MessageCreateParams
         {
             Model = _model,
             MaxTokens = 16000,
-            // If the model ever declines, another model answers inside the same call.
-            Betas = ["server-side-fallback-2026-06-01"],
-            Fallbacks = new BetaFallbacksParam([new BetaFallbackParam { Model = "claude-opus-4-8" }]),
             System = SystemPrompt(),
-            OutputConfig = new BetaOutputConfig { Effort = "low", Format = new BetaJsonOutputFormat { Schema = Schema() } },
-            Messages = [new BetaUserMessageParam { Content = user.ToString() }],
+            OutputConfig = new OutputConfig { Effort = _effort, Format = new JsonOutputFormat { Schema = Schema() } },
+            Messages = [new UserMessageParam { Content = user.ToString() }],
         }, cancellationToken: ct);
 
+        // Haiku has no server-side fallback model; a decline is answered by the patterns.
         if (response.StopReason == "refusal")
             return WithPatterns(text, now, "The model declined to read that, so only plain readings were understood.");
+        if (response.StopReason == "max_tokens")
+            return WithPatterns(text, now, "The model ran out of room before answering, so only plain readings were understood.");
 
-        var json = string.Concat(response.Content.Select(b => b.Value).OfType<BetaTextBlock>().Select(t => t.Text));
+        // Thinking blocks can come first; read the answer by type, not position.
+        var json = string.Concat(response.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text));
         var output = JsonSerializer.Deserialize<ModelOutput>(json, Json) ?? new ModelOutput([], null);
 
         var proposals = output.Captures.Select(c => FromModel(c, now)).OfType<Proposal>().ToArray();
