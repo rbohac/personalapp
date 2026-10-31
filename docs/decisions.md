@@ -87,3 +87,26 @@ supersede it with a new one that says what changed and why.
   text, and the same capture path serves typed and spoken input.
 - **Shots record supply too** (`event`: taken, ran-out, refilled). That reads
   "when I took them, when I'm out" as running out of supply.
+
+## 2026-10-31 — Capture runs on Haiku
+
+Supersedes the model line of "Areas and capture" above.
+
+- **`claude-haiku-5-5` at `medium` effort**, set by `Capture:Model` and
+  `Capture:Effort`. A capture is short extraction against fixed rules, which
+  is what the Haiku line is for, at about a twentieth of a cent each. Medium
+  is Haiku's default and Anthropic's recommended level where instructions
+  must be followed exactly; the guides' "never invent a number" is that kind
+  of rule. Drop to `low` for speed only if captures stay accurate.
+- **No server-side fallback.** Haiku 5.5 has none and rejects a fallback
+  list, so the request is the plain (non-beta) Messages API. A decline, or
+  running out of room, falls back to the area patterns and says so.
+- **Consistency comes from examples and the schema**, not sampling settings
+  (Haiku 5.5 rejects `temperature`). `_capture.md` ends with six worked
+  examples — input and exact JSON — covering several things in one sentence,
+  a time of day, a reused medication, a task with a list and reminder, a
+  half reading, and nothing to log.
+- **No prompt caching yet.** The area guides are a stable ~2k-token prefix
+  that could be cached, but personal captures are minutes or hours apart, so
+  a 5-minute cache would mostly miss and add the write cost. Revisit if
+  captures come in bursts.

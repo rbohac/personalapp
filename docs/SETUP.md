@@ -114,9 +114,10 @@ but nothing in words ("remind me to…", "took my shot").
 fly secrets set ANTHROPIC_API_KEY='<key>'
 ```
 
-Each capture is one short request: a fraction of a cent. To use a
-different model, set `Capture__Model` the same way (the default is
-`claude-opus-5-5`).
+Each capture is one short request to Claude Haiku 5.5: about a twentieth of
+a cent. To change the model or how hard it thinks, set `Capture__Model` or
+`Capture__Effort` (`low`, `medium`, `high`) the same way. The defaults are
+`claude-haiku-5-5` and `medium`.
 
 ## 5. Expo — new personal account
 
