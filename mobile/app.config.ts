@@ -13,7 +13,7 @@ import type { ExpoConfig } from "expo/config";
  *
  * Either can be overridden from the environment for experiments.
  */
-const GOOGLE_IOS_CLIENT_ID = "";
+const GOOGLE_IOS_CLIENT_ID = "646118810214-u298ds3die86438sh1kvvsit01hq1scu.apps.googleusercontent.com";
 const EAS_PROJECT_ID = "";
 
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || GOOGLE_IOS_CLIENT_ID;
