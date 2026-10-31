@@ -1,0 +1,14 @@
+{
+  "id": "tasks",
+  "name": "Tasks",
+  "icon": "checkbox-outline",
+  "kind": "tasks",
+  "lists": [
+    { "id": "personal", "label": "Personal" },
+    { "id": "home", "label": "Home" },
+    { "id": "cranberry", "label": "Cranberry" }
+  ],
+  "fields": [],
+  "summary": "",
+  "patterns": []
+}

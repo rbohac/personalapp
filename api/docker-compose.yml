@@ -1,0 +1,17 @@
+# Local Postgres for running the API on your machine:
+#   docker compose up -d
+#   dotnet run --project Bo.Api
+# Matches the connection string in Bo.Api/appsettings.Development.json.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: bo
+      POSTGRES_USER: bo
+      POSTGRES_PASSWORD: bo
+    ports:
+      - "5432:5432"
+    volumes:
+      - bo-db:/var/lib/postgresql/data
+volumes:
+  bo-db:

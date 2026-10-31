@@ -1,0 +1,13 @@
+{
+  "id": "medications",
+  "name": "Medications",
+  "icon": "medical-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "medication", "label": "Medication", "type": "text", "required": true },
+    { "key": "dose", "label": "Dose", "type": "text" },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{medication} · {dose}",
+  "patterns": []
+}

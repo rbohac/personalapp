@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Bo.Api</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="13.3.0" />
+    <PackageReference Include="Dapper" Version="2.1.89" />
+    <PackageReference Include="dbup-postgresql" Version="7.0.1" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.78.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.14" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
+  <!-- Schema changes are plain SQL files, embedded and applied in name order at startup. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Data/Migrations/*.sql" />
+  </ItemGroup>
+
+</Project>

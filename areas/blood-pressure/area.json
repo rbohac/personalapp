@@ -1,0 +1,17 @@
+{
+  "id": "blood-pressure",
+  "name": "Blood pressure",
+  "icon": "heart-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "systolic", "label": "Systolic", "type": "integer", "unit": "mmHg", "min": 60, "max": 260, "required": true },
+    { "key": "diastolic", "label": "Diastolic", "type": "integer", "unit": "mmHg", "min": 30, "max": 160, "required": true },
+    { "key": "pulse", "label": "Pulse", "type": "integer", "unit": "bpm", "min": 25, "max": 220 },
+    { "key": "arm", "label": "Arm", "type": "choice", "options": ["left", "right"] },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{systolic}/{diastolic} · pulse {pulse} · {arm} arm",
+  "patterns": [
+    "(?<systolic>\\d{2,3})\\s*(?:/|over)\\s*(?<diastolic>\\d{2,3})(?:\\D{0,40}?(?:pulse|heart rate|hr|bpm)\\D{0,10}(?<pulse>\\d{2,3}))?\\s*$"
+  ]
+}

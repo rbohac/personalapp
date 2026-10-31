@@ -1,0 +1,35 @@
+name: API
+
+on:
+  pull_request:
+    paths: ["api/**", "areas/**", "fly.toml", ".github/workflows/api.yml"]
+  push:
+    branches: [main]
+    paths: ["api/**", "areas/**", "fly.toml", ".github/workflows/api.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet build api/Bo.Api/Bo.Api.csproj -c Release
+      # The image Fly will run, built the same way, so a broken Dockerfile
+      # fails the PR rather than the deploy.
+      - run: docker build -f api/Dockerfile .
+
+  deploy:
+    # main is production: a merge that touches the API ships it.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency: deploy-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

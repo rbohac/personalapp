@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+*.user
+appsettings.Development.local.json
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+mobile/ios/
+mobile/android/
+expo-env.d.ts
+
+# Secrets — never committed
+.env
+.env*.local
+*.p8
+*.p12
+*.jks
+*.key
+*.mobileprovision
+
+.DS_Store

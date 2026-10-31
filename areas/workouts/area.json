@@ -1,0 +1,14 @@
+{
+  "id": "workouts",
+  "name": "Workouts",
+  "icon": "barbell-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "done", "label": "Did it", "type": "boolean", "trueLabel": "Done", "falseLabel": "Skipped", "default": true, "required": true },
+    { "key": "type", "label": "Type", "type": "text" },
+    { "key": "minutes", "label": "Minutes", "type": "integer", "unit": "min", "min": 1, "max": 600 },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{done} · {type} · {minutes} min",
+  "patterns": []
+}
