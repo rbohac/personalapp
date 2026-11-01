@@ -13,6 +13,10 @@ export type Entry = components["schemas"]["EntryDto"];
 export type EntryInput = components["schemas"]["EntryInput"];
 export type Proposal = components["schemas"]["Proposal"];
 export type CaptureResult = components["schemas"]["CaptureResult"];
+export type UsageSummary = components["schemas"]["UsageSummary"];
+export type UsageBucket = components["schemas"]["UsageBucket"];
+export type AiCall = components["schemas"]["AiCallDto"];
+export type AiCallDetail = components["schemas"]["AiCallDetail"];
 
 /**
  * The typed client. Every path, body and response type comes from the API's

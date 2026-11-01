@@ -44,6 +44,10 @@ iPhone (Bo) ──HTTPS + bearer token──▶ api.bohac.dev (Fly, .NET) ──
   every area's README and answers in a fixed JSON schema, and every value goes through the same validation as a
   hand-entered one. The app shows the proposals and saves only what you keep.
   Voice is on-device speech recognition; the server only ever sees text.
+- **AI usage and cost** (Settings → AI usage) charts spend per day and week
+  against a monthly budget and drills into each call. Costs are kept for
+  good; the words for 30 days. Model calls go through a provider-neutral
+  client, so other providers can be added later.
 
 ## Day to day
 

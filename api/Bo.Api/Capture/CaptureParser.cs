@@ -1,9 +1,9 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Anthropic;
-using Anthropic.Models.Messages;
+using Bo.Api.Ai;
 using Bo.Api.Areas;
 
 namespace Bo.Api.Capture;
@@ -12,47 +12,97 @@ namespace Bo.Api.Capture;
 /// Turns "took my BP 120/80, pulse 72" into proposals. The model reads the
 /// areas folder — _capture.md plus every area's README and fields — and
 /// answers in a fixed JSON schema; every value it returns then goes through
-/// the same validation as a hand-entered one. When the model isn't configured
-/// or can't be reached, the areas' fallback patterns read what they can.
+/// the same validation as a hand-entered one. When the model isn't configured,
+/// can't be reached, declines, or the monthly budget is spent, the areas'
+/// fallback patterns read what they can.
+///
+/// Every capture is recorded through <see cref="AiUsageStore"/>: what it cost
+/// (kept forever) and the words (kept for the retention window).
 /// </summary>
-public sealed class CaptureParser(AreaCatalog catalog, IConfiguration config, ILogger<CaptureParser> log)
+public sealed class CaptureParser(AreaCatalog catalog, IModelClient model, AiUsageStore usage, IConfiguration config, ILogger<CaptureParser> log)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private readonly string? _apiKey = config["Capture:AnthropicApiKey"] is { Length: > 0 } k ? k : Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-    // Haiku: a capture is short extraction against fixed rules, the work the
-    // Haiku line is built for, at a small fraction of a larger model's price.
-    private readonly string _model = config["Capture:Model"] is { Length: > 0 } m ? m : "claude-haiku-5-5";
     // Effort is how much the model thinks before answering. medium is Haiku's
     // default and the level Anthropic recommends where instructions must be
     // followed exactly ("never invent a number"); low is cheaper and faster.
     private readonly string _effort = config["Capture:Effort"] is { Length: > 0 } e ? e : "medium";
-    private AnthropicClient? _client;
 
-    public async Task<CaptureResult> ParseAsync(CaptureRequest req, IReadOnlyList<(string Area, string Summary, DateTime At)> recent, CancellationToken ct)
+    public async Task<CaptureResult> ParseAsync(Guid userId, CaptureRequest req, IReadOnlyList<(string Area, string Summary, DateTime At)> recent, CancellationToken ct)
     {
         var zone = ZoneOf(req.TimeZone);
         var now = DateTimeOffset.UtcNow;
+        var call = new Draft(userId, req.Text, req.Source);
 
-        if (string.IsNullOrEmpty(_apiKey))
-            return WithPatterns(req.Text, now, "The model isn't configured (ANTHROPIC_API_KEY), so only plain readings are understood.");
+        if (!model.Configured)
+            return await Finish(call with { Outcome = "not_configured" },
+                WithPatterns(req.Text, now, "The model isn't configured, so only plain readings are understood."), ct);
 
+        var budget = usage.Options.MonthlyBudgetUsd;
+        if (budget > 0 && await usage.MonthSpendAsync(userId, zone.Id, ct) >= budget)
+            return await Finish(call with { Outcome = "over_budget" },
+                WithPatterns(req.Text, now, $"This month's AI budget (${budget:0.00##}) is used up, so only plain readings are understood."), ct);
+
+        var request = new ModelRequest(SystemPrompt(), UserMessage(req.Text, local: TimeZoneInfo.ConvertTime(now, zone), zone, recent), Schema(), _effort);
+        call = call with { Provider = model.Provider, Model = model.Model, Request = request.User };
+        var clock = Stopwatch.StartNew();
         try
         {
-            return await WithModel(req.Text, now, zone, recent, ct);
+            var reply = await model.CompleteJsonAsync(request, ct);
+            call = call with
+            {
+                LatencyMs = (int)clock.ElapsedMilliseconds,
+                Usage = reply.Usage,
+                CostUsd = usage.Options.CostOf(model.Provider, model.Model, reply.Usage),
+                Response = reply.Text,
+            };
+
+            if (reply.Stop == ModelStop.Refused)
+                return await Finish(call with { Outcome = "refused" },
+                    WithPatterns(req.Text, now, "The model declined to read that, so only plain readings were understood."), ct);
+            if (reply.Stop == ModelStop.OutOfRoom)
+                return await Finish(call with { Outcome = "out_of_room" },
+                    WithPatterns(req.Text, now, "The model ran out of room before answering, so only plain readings were understood."), ct);
+
+            var output = JsonSerializer.Deserialize<ModelOutput>(reply.Text, Json) ?? new ModelOutput([], null);
+            var proposals = output.Captures.Select(c => FromModel(c, now)).OfType<Proposal>().ToArray();
+            return await Finish(call with { Outcome = "ok", Parser = "model" }, new CaptureResult(proposals, "model", output.Note), ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             log.LogWarning(e, "Capture model call failed; falling back to patterns.");
-            return WithPatterns(req.Text, now, "Couldn't reach the model, so only plain readings were understood.");
+            return await Finish(call with { Outcome = "error", LatencyMs = (int)clock.ElapsedMilliseconds, Error = e.Message },
+                WithPatterns(req.Text, now, "Couldn't reach the model, so only plain readings were understood."), ct);
         }
     }
 
-    private async Task<CaptureResult> WithModel(string text, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyList<(string Area, string Summary, DateTime At)> recent, CancellationToken ct)
+    /// <summary>What's known about a capture as it runs; recorded once it ends.</summary>
+    private sealed record Draft(Guid UserId, string Input, string Source)
     {
-        _client ??= new AnthropicClient { ApiKey = _apiKey };
-        var local = TimeZoneInfo.ConvertTime(now, zone);
+        public string Outcome { get; init; } = "ok";
+        public string Parser { get; init; } = "patterns";
+        public string? Provider { get; init; }
+        public string? Model { get; init; }
+        public ModelUsage Usage { get; init; } = new(0, 0, 0, 0);
+        public decimal? CostUsd { get; init; }
+        public int? LatencyMs { get; init; }
+        public string? Request { get; init; }
+        public string? Response { get; init; }
+        public string? Error { get; init; }
+    }
 
+    private async Task<CaptureResult> Finish(Draft d, CaptureResult result, CancellationToken ct)
+    {
+        // A call that never reached a model cost nothing, which is known, not unknown.
+        var cost = d.Provider is null ? 0m : d.CostUsd;
+        var id = await usage.RecordAsync(new AiCall(
+            d.UserId, "capture", d.Provider, d.Model, d.Outcome, d.Parser, d.Usage, cost, d.LatencyMs,
+            result.Proposals.Length, d.Input, d.Source, d.Request, d.Response, result.Proposals, result.Note, d.Error), ct);
+        return result with { CaptureId = id };
+    }
+
+    private static string UserMessage(string text, DateTimeOffset local, TimeZoneInfo zone, IReadOnlyList<(string Area, string Summary, DateTime At)> recent)
+    {
         var user = new StringBuilder()
             .AppendLine($"Local time now: {local:yyyy-MM-dd'T'HH:mm:sszzz} ({zone.Id}, {local:dddd})")
             .AppendLine()
@@ -61,31 +111,7 @@ public sealed class CaptureParser(AreaCatalog catalog, IConfiguration config, IL
             user.AppendLine($"- {area}: {summary} ({TimeZoneInfo.ConvertTime(new DateTimeOffset(at, TimeSpan.Zero), zone):yyyy-MM-dd HH:mm})");
         if (recent.Count == 0) user.AppendLine("- (none yet)");
         user.AppendLine().AppendLine("<capture>").AppendLine(text).AppendLine("</capture>");
-
-        // No temperature (Haiku 5.5 rejects sampling parameters) and no
-        // prefill: the JSON shape comes from structured output. MaxTokens
-        // leaves room for thinking, which counts against it.
-        var response = await _client.Messages.Create(new MessageCreateParams
-        {
-            Model = _model,
-            MaxTokens = 16000,
-            System = SystemPrompt(),
-            OutputConfig = new OutputConfig { Effort = _effort, Format = new JsonOutputFormat { Schema = Schema() } },
-            Messages = [new UserMessageParam { Content = user.ToString() }],
-        }, cancellationToken: ct);
-
-        // Haiku has no server-side fallback model; a decline is answered by the patterns.
-        if (response.StopReason == "refusal")
-            return WithPatterns(text, now, "The model declined to read that, so only plain readings were understood.");
-        if (response.StopReason == "max_tokens")
-            return WithPatterns(text, now, "The model ran out of room before answering, so only plain readings were understood.");
-
-        // Thinking blocks can come first; read the answer by type, not position.
-        var json = string.Concat(response.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text));
-        var output = JsonSerializer.Deserialize<ModelOutput>(json, Json) ?? new ModelOutput([], null);
-
-        var proposals = output.Captures.Select(c => FromModel(c, now)).OfType<Proposal>().ToArray();
-        return new CaptureResult(proposals, "model", output.Note);
+        return user.ToString();
     }
 
     private Proposal? FromModel(ModelCapture c, DateTimeOffset now)

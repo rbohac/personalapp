@@ -11,6 +11,11 @@ const light = {
   accentInk: "#FFFFFF",
   danger: "#DC2626",
   late: "#B45309",
+  // Chart bars: a deeper coral that keeps 3:1 contrast on both card colours
+  // (the brand coral is too light for marks on white). Checked with the
+  // dataviz palette validator in light and dark mode.
+  chart: "#E8553A",
+  track: "#E7E5E4",
 };
 
 const dark: typeof light = {
@@ -23,6 +28,8 @@ const dark: typeof light = {
   accentInk: "#0C0A09",
   danger: "#F87171",
   late: "#FBBF24",
+  chart: "#E8553A",
+  track: "#292524",
 };
 
 export type Palette = typeof light;

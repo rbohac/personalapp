@@ -11,12 +11,17 @@ export async function capture(text: string, source: CaptureSource): Promise<Capt
   return must(await api.POST("/capture", { body: { text, timeZone, source } }));
 }
 
-/** Save one proposal the owner kept, through the same endpoints a hand-made one uses. */
-export async function saveProposal(p: Proposal, raw: string, source: CaptureSource): Promise<void> {
+/**
+ * Save one proposal the owner kept, through the same endpoints a hand-made one
+ * uses. `captureId` links what was kept to the model call that produced it,
+ * which is how the AI usage screen knows kept from discarded.
+ */
+export async function saveProposal(p: Proposal, raw: string, source: CaptureSource, captureId?: string | null): Promise<void> {
+  const aiUsageId = captureId ?? null;
   if (p.kind === "task" && p.task) {
-    await createTask({ title: p.task.title, list: p.task.list, dueAt: p.task.dueAt, remindAt: p.task.remindAt });
+    await createTask({ title: p.task.title, list: p.task.list, dueAt: p.task.dueAt, remindAt: p.task.remindAt, aiUsageId });
     changed("tasks");
     return;
   }
-  await createEntry({ area: p.area, at: p.at, data: p.data as EntryInput["data"], source, raw });
+  await createEntry({ area: p.area, at: p.at, data: p.data as EntryInput["data"], source, raw, aiUsageId });
 }

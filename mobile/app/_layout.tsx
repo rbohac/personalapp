@@ -96,6 +96,8 @@ function Gate() {
       <Stack.Screen name="task/[id]" options={{ presentation: "modal", title: "Task" }} />
       <Stack.Screen name="area/[id]" options={{ title: "" }} />
       <Stack.Screen name="entry/[id]" options={{ presentation: "modal", title: "Entry" }} />
+      <Stack.Screen name="ai-usage/index" options={{ title: "AI usage" }} />
+      <Stack.Screen name="ai-usage/[id]" options={{ title: "Call" }} />
     </Stack>
   );
 }

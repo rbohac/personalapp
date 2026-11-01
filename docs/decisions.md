@@ -110,3 +110,33 @@ Supersedes the model line of "Areas and capture" above.
   that could be cached, but personal captures are minutes or hours apart, so
   a 5-minute cache would mostly miss and add the write cost. Revisit if
   captures come in bursts.
+
+## 2026-11-01 — AI usage, cost and logs
+
+- **Two tables, two lifetimes.** `ai_usage` is one row per model call (or
+  skipped call) with tokens, cost, latency and outcome, kept forever so spend
+  can be charted across months. `ai_logs` holds the words (what was said, the
+  per-call message sent, the raw answer, the proposals) and is deleted after
+  `Ai:LogRetentionDays` (30) by a background job in the API. The owner chose
+  30 days for the words and to keep cost indefinitely.
+- **Provider-neutral.** Every model call goes through `IModelClient`
+  (`api/Bo.Api/Ai/`). Anthropic is the one implementation; OpenAI or a local
+  model is another class plus an entry in `Ai:Prices`, keyed
+  `provider/model`. The tables store provider and model as plain text.
+- **Cost is computed, and unknown is not free.** Prices per million tokens
+  live in `appsettings.json` (`Ai:Prices`). A model missing from the table
+  records a null cost, shown as "unknown", so a missing price can't make spend
+  look lower than it is. A call that never reached a model records $0.
+- **Budget guardrail.** `Ai:MonthlyBudgetUsd` (default $5, overridable with
+  the `Ai__MonthlyBudgetUsd` Fly secret). Past it, captures fall back to the
+  area patterns and say why. The month is the user's calendar month. Pair it
+  with a spend limit in the Anthropic Console, which holds even if Bo has a
+  bug.
+- **Kept vs discarded.** Entries and tasks saved from a capture carry
+  `ai_usage_id`, so the usage screen shows how many proposals were kept.
+- **Charts are plain React Native views,** so the feature ships over the
+  air; no chart library (a native dependency) was added. The bar colour,
+  `#E8553A`, is a deeper coral that passes the 3:1 contrast check on both
+  themes, where the brand coral is too light on white.
+- **Not built yet:** a "this was wrong" button that saves a capture as a new
+  worked example. The owner will ask for it if misreads become common.
