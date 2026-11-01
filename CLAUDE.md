@@ -18,7 +18,12 @@ the pieces fit; docs/decisions.md says why; docs/SETUP.md is the one-time setup.
 A PR whose files no workflow covers (docs only, say) runs no CI; merge it
 once your own checks pass.
 
-Merging to `main` deploys the API to Fly (`.github/workflows/api.yml`). If a
+Merging to `main` ships automatically: API changes deploy to Fly
+(`.github/workflows/api.yml`), and app changes go to the phone
+(`.github/workflows/app-release.yml`) as an over-the-air update, or as a new
+TestFlight build when the native fingerprint changed (new library,
+permission, icon, app.config.ts). Prefer JS-only changes where they do the
+job; a native change costs a ~20-minute build and an Apple review pass. If a
 change needs something the owner must do — a new secret, a migration they
 should know about, a new app build — say so plainly in the PR and in your
 reply.

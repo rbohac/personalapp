@@ -71,9 +71,13 @@ After changing an endpoint, regenerate the app's types:
 cd mobile && BO_API_URL=http://localhost:5080 npm run api:types
 ```
 
-Ship: merge to `main`. The API deploys to Fly from GitHub Actions (or `fly deploy` from the repo root). App
-JavaScript ships over the air with `eas update --channel production`; a new
-native module or permission needs a new build (`eas build -p ios --profile production --auto-submit`).
+Ship: merge to `main`. GitHub Actions deploys the API to Fly
+(`api.yml`) and releases the app (`app-release.yml`): an over-the-air update
+when only JavaScript changed, or a new build submitted to TestFlight when the
+native fingerprint changed. Both need repository secrets (`FLY_API_TOKEN`,
+`EXPO_TOKEN`). By hand, `fly deploy` from the root, and from `mobile/`
+`eas update --channel production` or
+`eas build -p ios --profile production --auto-submit`.
 
 ## Adding a database change
 

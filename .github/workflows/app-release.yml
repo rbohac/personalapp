@@ -1,0 +1,97 @@
+name: App release
+
+# Ships every merged app change to the phone, choosing the cheapest way that
+# works:
+#   - JavaScript-only change -> an over-the-air update (live in about a minute;
+#     the app picks it up on its next launches).
+#   - A change native code depends on (a new library, a permission, the icon,
+#     anything in app.config.ts) -> a new iOS build, submitted to TestFlight.
+# "Native" is decided by Expo's fingerprint, the same hash the app's
+# runtimeVersion uses: if no build exists yet for the current fingerprint,
+# build one; otherwise publish an update to the builds that do.
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**", ".github/workflows/app-release.yml"]
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Build and submit to TestFlight even if no native change"
+        type: boolean
+        default: false
+
+concurrency:
+  group: app-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Check the Expo token is set
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::The EXPO_TOKEN repository secret is missing (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+
+      - run: npm install -g eas-cli
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Is there already a build for this native fingerprint?
+        id: decide
+        run: |
+          hash=$(npx expo-updates fingerprint:generate --platform ios | jq -r .hash)
+          echo "fingerprint=$hash" >> "$GITHUB_OUTPUT"
+          # A build that is finished or still running counts; errored or
+          # canceled ones don't, so a failed build is retried on the next merge.
+          existing=$(eas build:list --platform ios --build-profile production --runtime-version "$hash" \
+            --limit 20 --json --non-interactive \
+            | jq '[.[] | select(.status != "ERRORED" and .status != "CANCELED")] | length')
+          if [ "${{ inputs.force_build }}" = "true" ] || [ "$existing" = "0" ]; then
+            echo "action=build" >> "$GITHUB_OUTPUT"
+            echo "No usable build for fingerprint $hash, so this release needs a new build."
+          else
+            echo "action=update" >> "$GITHUB_OUTPUT"
+            echo "$existing build(s) already cover fingerprint $hash, so this release is an over-the-air update."
+          fi
+
+      - name: Publish an over-the-air update
+        if: steps.decide.outputs.action == 'update'
+        run: |
+          eas update --channel production --platform ios --non-interactive \
+            --message "$(git log -1 --pretty=%s)"
+
+      - name: Build and submit to TestFlight
+        if: steps.decide.outputs.action == 'build'
+        # --no-wait: the build runs on Expo's servers (about 20 minutes) and
+        # submits itself; this job doesn't need to sit and wait for it.
+        run: eas build --platform ios --profile production --auto-submit --non-interactive --no-wait
+
+      - name: Summary
+        run: |
+          {
+            echo "### App release"
+            echo "- Fingerprint: \`${{ steps.decide.outputs.fingerprint }}\`"
+            if [ "${{ steps.decide.outputs.action }}" = "build" ]; then
+              echo "- Started an iOS build that submits itself to TestFlight. Progress: https://expo.dev/accounts/rbohac-personal/projects/bo/builds"
+            else
+              echo "- Published an over-the-air update. Open Bo twice on the phone to pick it up."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
