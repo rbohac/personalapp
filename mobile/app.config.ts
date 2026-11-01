@@ -28,6 +28,8 @@ const config: ExpoConfig = {
   version: "0.1.0",
   scheme: "bo",
   orientation: "portrait",
+  // 1024x1024, opaque (Apple rejects transparency). Source: assets/icon.svg.
+  icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
   runtimeVersion: { policy: "fingerprint" },
   ...(projectId
