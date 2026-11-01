@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -51,6 +51,8 @@ export default function LogScreen() {
   async function readIt(words = text, from = source) {
     const t = words.trim();
     if (!t) return;
+    // Put the keyboard away so the proposals and Recent list are in view.
+    Keyboard.dismiss();
     setReading(true);
     try {
       const r = await capture(t, from);
@@ -106,7 +108,14 @@ export default function LogScreen() {
   const keepCount = result ? result.proposals.filter((p, i) => !skip.has(i) && p.problems.length === 0).length : 0;
 
   return (
-    <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
+    // Swipe down, or tap anywhere that isn't a control, to put the keyboard away.
+    <ScrollView
+      style={{ backgroundColor: c.bg }}
+      contentContainerStyle={s.scroll}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+    >
+      <Pressable onPress={Keyboard.dismiss} accessible={false} style={s.body}>
       <View style={[s.box, { backgroundColor: c.card, borderColor: dictation.listening ? c.accent : c.line }]}>
         <TextInput
           value={text}
@@ -174,6 +183,7 @@ export default function LogScreen() {
           </Pressable>
         ))}
       </View>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -198,7 +208,8 @@ function ProposalCard({ p, c, kept, onToggle, onFix }: { p: Proposal; c: Palette
 }
 
 const s = StyleSheet.create({
-  body: { padding: 16, gap: 12 },
+  scroll: { flexGrow: 1 },
+  body: { flexGrow: 1, padding: 16, gap: 12 },
   box: { borderRadius: 16, borderWidth: 1.5, padding: 12, gap: 10 },
   input: { fontSize: 19, minHeight: 72, textAlignVertical: "top" },
   boxActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
