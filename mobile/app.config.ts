@@ -38,6 +38,10 @@ const config: ExpoConfig = {
     supportsTablet: false,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      // Apple rejects a build whose libraries reference these APIs without a
+      // purpose string, even when Bo never calls them (ITMS-90683 on 0.1.0).
+      NSPhotoLibraryUsageDescription: "Bo only opens your photos when you choose one to attach.",
+      NSCameraUsageDescription: "Bo only uses the camera when you choose to take a photo to attach.",
     },
   },
   plugins: [
