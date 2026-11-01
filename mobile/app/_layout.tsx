@@ -11,8 +11,14 @@ import { refreshPushRegistration } from "../lib/push";
 import { ensureNotificationPermission, registerReminderCategory, reminderActionOf } from "../lib/reminders";
 import { getTask, inputOf, setDone, updateTask } from "../lib/tasks";
 import { usePalette } from "../lib/theme";
+import { applyLatestUpdate } from "../lib/updates";
 
 export default function RootLayout() {
+  // New code arrives over the air; apply it on this launch instead of the next.
+  useEffect(() => {
+    void applyLatestUpdate();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
