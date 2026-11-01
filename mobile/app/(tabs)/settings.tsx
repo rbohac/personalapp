@@ -8,12 +8,14 @@ import { useAuth } from "../../lib/auth";
 import { API_URL } from "../../lib/config";
 import { registerPush } from "../../lib/push";
 import { ensureNotificationPermission } from "../../lib/reminders";
+import { applyLatestUpdate, runningLabel, runtimeLabel } from "../../lib/updates";
 import { usePalette, type Palette } from "../../lib/theme";
 
 export default function SettingsScreen() {
   const c = usePalette();
   const { state, signOut } = useAuth();
   const [pushNote, setPushNote] = useState<string | null>(null);
+  const [updateNote, setUpdateNote] = useState<string | null>(null);
   const user = state.status === "signedIn" ? state.user : null;
 
   async function testReminder() {
@@ -37,6 +39,17 @@ export default function SettingsScreen() {
     }
   }
 
+  async function checkUpdates() {
+    setUpdateNote("Checking…");
+    const r = await applyLatestUpdate();
+    setUpdateNote(
+      r.kind === "current" ? "You're on the latest version."
+      : r.kind === "applying" ? "Restarting into the new version…"
+      : r.kind === "off" ? "Updates are off in this build."
+      : r.message,
+    );
+  }
+
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body}>
       <Group c={c} title="Account">
@@ -56,6 +69,10 @@ export default function SettingsScreen() {
 
       <Group c={c} title="About">
         <Line c={c} label="Version" value={Constants.expoConfig?.version ?? "?"} />
+        <Line c={c} label="Running" value={runningLabel()} />
+        <Line c={c} label="Runtime" value={runtimeLabel()} />
+        <Button c={c} label="Check for updates" onPress={() => void checkUpdates()} />
+        {updateNote ? <Text style={[s.note, { color: c.muted }]}>{updateNote}</Text> : null}
         <Line c={c} label="API" value={API_URL} />
       </Group>
     </ScrollView>
