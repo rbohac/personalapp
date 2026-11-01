@@ -30,14 +30,16 @@ export function setAuth(t: string | null, signOut: (() => void) | null) {
   onUnauthorized = signOut;
 }
 
+// Both hooks change things in place and return nothing. openapi-fetch treats
+// a returned value as a replacement and checks it with `instanceof Request` /
+// `instanceof Response`, which React Native's fetch objects fail, so returning
+// the same object threw on every call on the phone (never in Node).
 const auth: Middleware = {
   onRequest({ request }) {
     if (token) request.headers.set("Authorization", `Bearer ${token}`);
-    return request;
   },
   onResponse({ response }) {
     if (response.status === 401 && token) onUnauthorized?.();
-    return response;
   },
 };
 api.use(auth);
