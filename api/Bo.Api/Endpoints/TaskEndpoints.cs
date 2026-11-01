@@ -16,7 +16,7 @@ public record TaskDto(
 /// and there is no partial-update ambiguity to get wrong.
 /// </summary>
 /// <remarks><c>List</c> is one of the lists in areas/tasks/area.json.</remarks>
-public record TaskInput(string Title, string? Notes = null, DateTimeOffset? DueAt = null, DateTimeOffset? RemindAt = null, string List = "personal");
+public record TaskInput(string Title, string? Notes = null, DateTimeOffset? DueAt = null, DateTimeOffset? RemindAt = null, string List = "personal", Guid? AiUsageId = null);
 
 public static class TaskEndpoints
 {
@@ -76,8 +76,9 @@ public static class TaskEndpoints
         await using var conn = await db.OpenAsync(ct);
         var row = await conn.QuerySingleAsync<TaskDto>(
             $"""
-            insert into tasks (user_id, title, notes, list, due_at, remind_at)
-            values (@user, @title, @notes, @list, @dueAt, @remindAt)
+            insert into tasks (user_id, title, notes, list, due_at, remind_at, ai_usage_id)
+            values (@user, @title, @notes, @list, @dueAt, @remindAt,
+              (select id from ai_usage where id = @aiUsageId and user_id = @user))
             returning {Columns}
             """,
             Params(body, http, null));
@@ -138,6 +139,7 @@ public static class TaskEndpoints
         title = b.Title.Trim(),
         notes = string.IsNullOrWhiteSpace(b.Notes) ? null : b.Notes,
         list = b.List,
+        aiUsageId = b.AiUsageId,
         dueAt = b.DueAt?.UtcDateTime,
         remindAt = b.RemindAt?.UtcDateTime,
     };

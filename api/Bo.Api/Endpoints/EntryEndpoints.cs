@@ -12,7 +12,8 @@ public record EntryDto(
     string Source, string? Raw, DateTime CreatedAt);
 
 /// <summary>A new or edited entry. <c>At</c> defaults to now; <c>Data</c> is validated against the area.</summary>
-public record EntryInput(string Area, Dictionary<string, JsonElement> Data, DateTimeOffset? At = null, string Source = "manual", string? Raw = null);
+/// <remarks><c>AiUsageId</c> is the capture this entry was saved from, if any (CaptureResult.CaptureId).</remarks>
+public record EntryInput(string Area, Dictionary<string, JsonElement> Data, DateTimeOffset? At = null, string Source = "manual", string? Raw = null, Guid? AiUsageId = null);
 
 public static class EntryEndpoints
 {
@@ -64,14 +65,15 @@ public static class EntryEndpoints
         await using var conn = await db.OpenAsync(ct);
         var row = await conn.QuerySingleAsync<EntryRow>(
             $"""
-            insert into entries (user_id, area, at, data, source, raw)
-            values (@user, @area, @at, @data::jsonb, @source, @raw)
+            insert into entries (user_id, area, at, data, source, raw, ai_usage_id)
+            values (@user, @area, @at, @data::jsonb, @source, @raw,
+              (select id from ai_usage where id = @aiUsageId and user_id = @user))
             returning {Row.Columns}
             """,
             new
             {
                 user = http.User.UserId(), area = body.Area, at = (body.At ?? DateTimeOffset.UtcNow).UtcDateTime,
-                data = JsonSerializer.Serialize(data), source = body.Source, raw = body.Raw,
+                data = JsonSerializer.Serialize(data), source = body.Source, raw = body.Raw, aiUsageId = body.AiUsageId,
             });
         return TypedResults.Created($"/entries/{row.Id}", Row.ToDto(row, catalog));
     }

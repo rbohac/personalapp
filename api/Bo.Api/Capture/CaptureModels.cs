@@ -8,7 +8,8 @@ public record CaptureRequest(string Text, string? TimeZone = null, string Source
 /// the ones the owner keeps through the ordinary endpoints (POST /entries,
 /// POST /tasks), so a capture can never write something nobody looked at.
 /// </summary>
-public record CaptureResult(Proposal[] Proposals, string Parser, string? Note);
+/// <param name="CaptureId">The recorded call (ai_usage). Saving a proposal with it links what was kept to what it cost.</param>
+public record CaptureResult(Proposal[] Proposals, string Parser, string? Note, Guid? CaptureId = null);
 
 /// <param name="Kind">"entry" or "task".</param>
 /// <param name="Problems">Why it can't be saved as is (a missing reading, a value out of range). Empty means ready.</param>

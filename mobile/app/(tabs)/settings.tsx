@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
+import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 
 import { useAuth } from "../../lib/auth";
@@ -47,6 +48,10 @@ export default function SettingsScreen() {
         <Button c={c} label="Send a test reminder" onPress={() => void testReminder()} />
         <Button c={c} label="Register for server push" onPress={() => void connectPush()} />
         {pushNote ? <Text style={[s.note, { color: c.muted }]}>{pushNote}</Text> : null}
+      </Group>
+
+      <Group c={c} title="AI">
+        <Button c={c} label="AI usage and cost" onPress={() => router.push("/ai-usage")} />
       </Group>
 
       <Group c={c} title="About">

@@ -727,10 +727,173 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/usage/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    tz?: string;
+                    days?: number | string;
+                    weeks?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UsageSummary"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/usage/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    tz?: string;
+                    day?: string;
+                    limit?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AiCallDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/usage/calls/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AiCallDetail"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AiCallDetail: {
+            call: components["schemas"]["AiCallDto"];
+            log: null | components["schemas"]["AiLogDto"];
+        };
+        AiCallDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            at: string;
+            feature: string;
+            provider: null | string;
+            model: null | string;
+            outcome: string;
+            parser: string;
+            /** Format: int32 */
+            inputTokens: number | string;
+            /** Format: int32 */
+            outputTokens: number | string;
+            /** Format: int32 */
+            cacheReadTokens: number | string;
+            /** Format: int32 */
+            cacheWriteTokens: number | string;
+            /** Format: double */
+            costUsd: null | number | string;
+            /** Format: int32 */
+            latencyMs: null | number | string;
+            /** Format: int32 */
+            proposals: number | string;
+            /** Format: int32 */
+            kept: number | string;
+            input: null | string;
+        };
+        AiLogDto: {
+            input: string;
+            source: null | string;
+            request: null | string;
+            response: null | string;
+            proposals: null | components["schemas"]["JsonElement"];
+            note: null | string;
+            error: null | string;
+        };
         AreaDefinition: {
             id: string;
             name: string;
@@ -771,6 +934,8 @@ export interface components {
             proposals: components["schemas"]["Proposal"][];
             parser: string;
             note: null | string;
+            /** Format: uuid */
+            captureId?: null | string;
         };
         EntryDto: {
             /** Format: uuid */
@@ -793,6 +958,8 @@ export interface components {
             /** @default manual */
             source: string;
             raw?: null | string;
+            /** Format: uuid */
+            aiUsageId?: null | string;
         };
         GoogleSignInRequest: {
             idToken: string;
@@ -858,6 +1025,8 @@ export interface components {
             remindAt?: null | string;
             /** @default personal */
             list: string;
+            /** Format: uuid */
+            aiUsageId?: null | string;
         };
         TaskProposal: {
             title: string;
@@ -866,6 +1035,56 @@ export interface components {
             dueAt: null | string;
             /** Format: date-time */
             remindAt: null | string;
+        };
+        UsageBucket: {
+            /** Format: date */
+            start: string;
+            /** Format: double */
+            cost: number | string;
+            /** Format: int32 */
+            calls: number | string;
+        };
+        UsageByModel: {
+            provider: string;
+            model: string;
+            /** Format: int32 */
+            calls: number | string;
+            /** Format: double */
+            cost: null | number | string;
+            /** Format: int64 */
+            inputTokens: number | string;
+            /** Format: int64 */
+            outputTokens: number | string;
+        };
+        UsageMonth: {
+            /** Format: date */
+            start: string;
+            /** Format: double */
+            spend: number | string;
+            /** Format: double */
+            budget: number | string;
+            /** Format: double */
+            projected: number | string;
+            /** Format: int32 */
+            calls: number | string;
+            /** Format: int32 */
+            modelCalls: number | string;
+            /** Format: int32 */
+            fallbacks: number | string;
+            /** Format: int32 */
+            unknownCostCalls: number | string;
+            /** Format: int32 */
+            proposals: number | string;
+            /** Format: int32 */
+            kept: number | string;
+        };
+        UsageSummary: {
+            month: components["schemas"]["UsageMonth"];
+            days: components["schemas"]["UsageBucket"][];
+            weeks: components["schemas"]["UsageBucket"][];
+            models: components["schemas"]["UsageByModel"][];
+            /** Format: int32 */
+            logRetentionDays: number | string;
         };
         UserDto: {
             /** Format: uuid */

@@ -34,6 +34,6 @@ public static class CaptureEndpoints
                 : r.Area, r.At))
             .ToList();
 
-        return TypedResults.Ok(await parser.ParseAsync(body with { Text = text }, recent, ct));
+        return TypedResults.Ok(await parser.ParseAsync(http.User.UserId(), body with { Text = text }, recent, ct));
     }
 }

@@ -88,7 +88,7 @@ export default function LogScreen() {
     const keep = result.proposals.filter((p, i) => !skip.has(i) && p.problems.length === 0);
     setSaving(true);
     try {
-      for (const p of keep) await saveProposal(p, read, source);
+      for (const p of keep) await saveProposal(p, read, source, result.captureId);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       void loadRecent();

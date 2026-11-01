@@ -1,3 +1,4 @@
+using Bo.Api.Ai;
 using Bo.Api.Areas;
 using Bo.Api.Auth;
 using Bo.Api.Capture;
@@ -12,6 +13,18 @@ builder.Services.AddBoDatabase(builder.Configuration);
 builder.Services.AddBoAuth(builder.Configuration);
 // The areas folder is loaded once; a malformed area.json stops startup.
 builder.Services.AddSingleton(AreaCatalog.Load(AreaCatalog.FindDirectory(builder.Configuration, builder.Environment.ContentRootPath)));
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
+builder.Services.AddSingleton<AiUsageStore>();
+builder.Services.AddHostedService<AiLogRetention>();
+// The model the capture parser talks to. A second provider is another
+// IModelClient implementation chosen here by Capture:Provider.
+builder.Services.AddSingleton<IModelClient>(_ => (builder.Configuration["Capture:Provider"] ?? "anthropic") switch
+{
+    "anthropic" => new AnthropicModelClient(
+        builder.Configuration["Capture:AnthropicApiKey"] is { Length: > 0 } k ? k : Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"),
+        builder.Configuration["Capture:Model"] is { Length: > 0 } m ? m : "claude-haiku-5-5"),
+    var other => throw new InvalidOperationException($"Capture:Provider \"{other}\" has no client yet."),
+});
 builder.Services.AddSingleton<CaptureParser>();
 
 var app = builder.Build();
@@ -35,5 +48,6 @@ app.MapDeviceEndpoints();
 app.MapAreaEndpoints();
 app.MapEntryEndpoints();
 app.MapCaptureEndpoints();
+app.MapAiUsageEndpoints();
 
 app.Run();
