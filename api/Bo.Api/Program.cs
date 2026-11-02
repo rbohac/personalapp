@@ -49,5 +49,6 @@ app.MapAreaEndpoints();
 app.MapEntryEndpoints();
 app.MapCaptureEndpoints();
 app.MapAiUsageEndpoints();
+app.MapVocabularyEndpoints();
 
 app.Run();

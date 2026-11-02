@@ -104,6 +104,8 @@ function Gate() {
       <Stack.Screen name="entry/[id]" options={{ presentation: "modal", title: "Entry" }} />
       <Stack.Screen name="ai-usage/index" options={{ title: "AI usage" }} />
       <Stack.Screen name="ai-usage/[id]" options={{ title: "Call" }} />
+      <Stack.Screen name="vocabulary/index" options={{ title: "Words" }} />
+      <Stack.Screen name="vocabulary/[id]" options={{ title: "Word" }} />
     </Stack>
   );
 }

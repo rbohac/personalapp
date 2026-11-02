@@ -154,3 +154,15 @@ Supersedes the model line of "Areas and capture" above.
 - **On-phone vs Apple's servers is a setting** (Settings › Voice), default
   on-phone. Apple's server recognizer may honour the list more strongly; the
   switch lets the owner compare before we decide anything.
+
+## 2026-11-02 — The word list is edited on the phone
+
+- **Each person's list lives in Postgres** (`vocabulary_terms`, migration
+  0004), with add/edit/delete at `/vocabulary`. `areas/_vocabulary.json`
+  became the starter list: it's copied in once, the first time the list is
+  read (`users.vocabulary_seeded`), so deleting a starter word on the phone
+  sticks. Copying once beats merging the file with per-person overrides on
+  every read, which would have needed "hidden" rows to delete a starter.
+- **Capped at 100 words**, Apple's guidance for expected words. Mishearings
+  (`heard`) are stored lowercased, up to 10 per word, for the sound-alike
+  matching that comes next.

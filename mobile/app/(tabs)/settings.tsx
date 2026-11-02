@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import Constants from "expo-constants";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as Notifications from "expo-notifications";
 
 import { useAuth } from "../../lib/auth";
@@ -18,15 +18,16 @@ export default function SettingsScreen() {
   const [pushNote, setPushNote] = useState<string | null>(null);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
   const [mode, setMode] = useState<RecognizerMode>("phone");
-  const [words, setWords] = useState<string | null>(null);
+  const [wordCount, setWordCount] = useState<number | null>(null);
 
   useEffect(() => {
     void getRecognizerMode().then(setMode);
-    getVocabulary().then(
-      (v) => setWords(v.length ? v.map((t) => t.term).join(", ") : "None yet"),
-      () => setWords("Couldn't load"),
-    );
   }, []);
+  useFocusEffect(
+    useCallback(() => {
+      getVocabulary().then((v) => setWordCount(v.length), () => setWordCount(null));
+    }, []),
+  );
 
   function changeMode(onPhone: boolean) {
     const m: RecognizerMode = onPhone ? "phone" : "apple";
@@ -88,7 +89,10 @@ export default function SettingsScreen() {
         <Text style={[s.note, { color: c.muted }]}>
           {mode === "phone" ? "Works offline. Audio stays on the phone." : "Uses Apple's servers. May pick up the words below more reliably."}
         </Text>
-        <Text style={[s.note, { color: c.muted, paddingTop: 0 }]}>Words Bo listens for: {words ?? "…"}</Text>
+        <Pressable onPress={() => router.push("/vocabulary")} style={[s.line, { borderBottomColor: c.line }]}>
+          <Text style={{ color: c.accent, fontSize: 16, fontWeight: "500" }}>Words Bo listens for</Text>
+          <Text style={{ color: c.muted, fontSize: 15 }}>{wordCount ?? ""}</Text>
+        </Pressable>
       </Group>
 
       <Group c={c} title="AI">

@@ -1,21 +1,50 @@
 import * as SecureStore from "expo-secure-store";
 
-import { api, must, type VocabularyTerm } from "./api";
+import { api, must, type VocabularyInput, type VocabularyItem } from "./api";
+import { changed } from "./events";
 
 /**
- * Words Bo should know (areas/_vocabulary.json, served at GET /vocabulary).
- * Handed to the speech recognizer as expected words, so "tirzepatide" is
- * heard as itself rather than "Teresa appetite". Read once per launch like
- * the areas; a failed read is retried next time.
+ * The words Bo listens for: the person's own list, edited on the phone
+ * (Settings › Voice › Words Bo listens for). The server seeds it once from
+ * areas/_vocabulary.json. Handed to the speech recognizer as expected words,
+ * so "tirzepatide" is heard as itself rather than "Teresa appetite".
+ * Cached for the mic; every edit drops the cache.
  */
-let cached: Promise<VocabularyTerm[]> | null = null;
+let cached: Promise<VocabularyItem[]> | null = null;
 
-export function getVocabulary(): Promise<VocabularyTerm[]> {
+export function getVocabulary(): Promise<VocabularyItem[]> {
   cached ??= api.GET("/vocabulary").then(must).catch((e) => {
-    cached = null;
+    cached = null; // a failed read is retried next time
     throw e;
   });
   return cached;
+}
+
+export function refreshVocabulary(): Promise<VocabularyItem[]> {
+  cached = null;
+  return getVocabulary();
+}
+
+function edited() {
+  cached = null;
+  changed("vocabulary");
+}
+
+export async function addWord(input: VocabularyInput): Promise<VocabularyItem> {
+  const w = must(await api.POST("/vocabulary", { body: input }));
+  edited();
+  return w;
+}
+
+export async function updateWord(id: string, input: VocabularyInput): Promise<VocabularyItem> {
+  const w = must(await api.PUT("/vocabulary/{id}", { params: { path: { id } }, body: input }));
+  edited();
+  return w;
+}
+
+export async function deleteWord(id: string): Promise<void> {
+  must(await api.DELETE("/vocabulary/{id}", { params: { path: { id } } }));
+  edited();
 }
 
 /** The terms as the recognizer wants them. Never throws: no list just means no hints. */
