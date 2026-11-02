@@ -1,0 +1,7 @@
+{
+  "goals": [
+    { "title": "Walk days", "area": "walks", "measure": "days", "target": 4 },
+    { "title": "Walking distance", "area": "walks", "measure": "total", "field": "distance", "target": 10 },
+    { "title": "Lifting days", "area": "workouts", "measure": "days", "target": 3, "excludeField": "type", "excludeValues": ["run", "walk"] }
+  ]
+}

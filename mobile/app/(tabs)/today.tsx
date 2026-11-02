@@ -4,7 +4,8 @@ import { router, Tabs, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { Ionicons } from "@expo/vector-icons";
 
 import { useRemindPicker } from "../../components/RemindPicker";
-import type { ItemMark, Schedule } from "../../lib/api";
+import type { Goal, ItemMark, Schedule } from "../../lib/api";
+import { listGoals } from "../../lib/goals";
 import { onChanged } from "../../lib/events";
 import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, setItem, shortDate, weekday, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
@@ -13,6 +14,7 @@ import { usePalette, type Palette } from "../../lib/theme";
 export default function TodayScreen() {
   const c = usePalette();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -39,7 +41,9 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setSchedules(await listSchedules());
+      const [ss, gs] = await Promise.all([listSchedules(), listGoals().catch(() => [] as Goal[])]);
+      setSchedules(ss);
+      setGoals(gs);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load schedules.");
@@ -51,6 +55,14 @@ export default function TodayScreen() {
   useFocusEffect(useCallback(() => void load(), [load]));
   useEffect(() => onChanged("schedules", () => void load()), [load]);
   useEffect(() => onChanged("entries", () => void load()), [load]);
+  useEffect(() => onChanged("goals", () => void load()), [load]);
+
+  function add() {
+    ActionSheetIOS.showActionSheetWithOptions({ options: ["New schedule", "New weekly goal", "Cancel"], cancelButtonIndex: 2 }, (i) => {
+      if (i === 0) router.push({ pathname: "/schedule/[id]", params: { id: "new" } });
+      if (i === 1) router.push({ pathname: "/goal/[id]", params: { id: "new" } });
+    });
+  }
 
   // Arriving from a "not taken yet" push: ask once the list has loaded.
   const [asked, setAsked] = useState<string | null>(null);
@@ -86,7 +98,7 @@ export default function TodayScreen() {
       <Tabs.Screen
         options={{
           headerRight: () => (
-            <Pressable onPress={() => router.push({ pathname: "/schedule/[id]", params: { id: "new" } })} hitSlop={10} style={{ paddingHorizontal: 16 }}>
+            <Pressable onPress={add} hitSlop={10} style={{ paddingHorizontal: 16 }}>
               <Ionicons name="add" size={26} color={c.accent} />
             </Pressable>
           ),
@@ -99,6 +111,7 @@ export default function TodayScreen() {
       {sorted.map((sch) => (
         <Card key={sch.id} c={c} sch={sch} busy={busy === sch.id} onAct={act} onAskWhen={askWhen} />
       ))}
+      {goals.length > 0 ? <Week c={c} goals={goals} /> : null}
       {remind.picker}
     </ScrollView>
   );
@@ -231,6 +244,40 @@ function ItemChips({ c, sch, onAct, onAskWhen }: { c: Palette; sch: Schedule; on
   );
 }
 
+/** This week's goals: a bar each, filled toward the target. */
+function Week({ c, goals }: { c: Palette; goals: Goal[] }) {
+  const left = Number(goals[0].progress.daysLeft);
+  return (
+    <View style={{ gap: 8, marginTop: 8 }}>
+      <Text style={{ color: c.muted, fontSize: 12, fontWeight: "600", paddingHorizontal: 4 }}>
+        THIS WEEK · {left === 1 ? "LAST DAY" : `${left} DAYS LEFT`}
+      </Text>
+      <View style={[s.card, { backgroundColor: c.card, borderColor: c.line, gap: 14 }]}>
+        {goals.map((g) => {
+          const value = Number(g.progress.value);
+          const target = Number(g.progress.target);
+          const share = Math.min(1, target > 0 ? value / target : 0);
+          return (
+            <Pressable key={g.id} onPress={() => router.push({ pathname: "/goal/[id]", params: { id: g.id } })} style={{ gap: 6, opacity: g.paused ? 0.5 : 1 }}>
+              <View style={s.head}>
+                <Text style={{ color: c.ink, fontSize: 15, fontWeight: "600", flex: 1 }}>
+                  {g.progress.met ? "✓ " : ""}
+                  {g.title}
+                </Text>
+                <Text style={{ color: g.progress.met ? c.ink : c.muted, fontSize: 14 }}>{g.paused ? "Paused" : g.progress.label}</Text>
+              </View>
+              <View style={[s.track, { backgroundColor: c.track }]}>
+                <View style={[s.fill, { width: `${share * 100}%`, backgroundColor: c.chart }]} />
+              </View>
+              <Text style={{ color: c.muted, fontSize: 12 }}>Last week {Number(g.progress.lastWeek).toLocaleString(undefined, { maximumFractionDigits: 1 })}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function Small({ c, label, onPress }: { c: Palette; label: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={[s.small, { borderColor: c.accent }]}>
@@ -248,5 +295,7 @@ const s = StyleSheet.create({
   small: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   done: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  track: { height: 8, borderRadius: 4, overflow: "hidden" },
+  fill: { height: 8, borderRadius: 4 },
   chip: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
 });

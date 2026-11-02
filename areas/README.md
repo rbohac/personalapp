@@ -91,3 +91,11 @@ the phone after that (Today tab). A schedule is done when an entry in its
 `area` is logged — and, when it has a `match`, one whose medication contains
 that text. `start` is a weekday ("monday": the next one, today included) or a
 date.
+
+`_goals.json` is the **starter list of weekly goals** — "walk at least 4
+days", "10 miles", "lift 3 days". Copied in once, then edited on the phone
+(Today › This week). A goal counts either the days with an entry
+(`measure: days`) or the sum of a number field (`measure: total`, `field`).
+A skipped entry (`done: false`) never counts, and `excludeField` /
+`excludeValues` leave some out (lifting = workouts whose type isn't a run or
+a walk). Weeks run Monday to Sunday, local time.

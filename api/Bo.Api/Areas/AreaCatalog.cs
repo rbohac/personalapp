@@ -23,6 +23,8 @@ public sealed class AreaCatalog
     public IReadOnlyList<VocabularyTerm> Vocabulary { get; }
     /// <summary>areas/_schedules.json — the starter schedules.</summary>
     public IReadOnlyList<StarterSchedule> StarterSchedules { get; private init; } = [];
+    /// <summary>areas/_goals.json — the starter weekly goals.</summary>
+    public IReadOnlyList<StarterGoal> StarterGoals { get; private init; } = [];
 
     private readonly Dictionary<string, AreaDefinition> _byId;
 
@@ -64,7 +66,33 @@ public sealed class AreaCatalog
         return new AreaCatalog(areas, File.Exists(capture) ? File.ReadAllText(capture) : "", LoadVocabulary(Path.Combine(dir, "_vocabulary.json")))
         {
             StarterSchedules = LoadStarterSchedules(Path.Combine(dir, "_schedules.json"), areas),
+            StarterGoals = LoadStarterGoals(Path.Combine(dir, "_goals.json"), areas),
         };
+    }
+
+    private static List<StarterGoal> LoadStarterGoals(string file, List<AreaDefinition> areas)
+    {
+        if (!File.Exists(file)) return [];
+        var list = JsonSerializer.Deserialize<GoalsFile>(File.ReadAllText(file), Json)?.Goals ?? [];
+        foreach (var g in list)
+        {
+            if (GoalProblem(areas.FirstOrDefault(a => a.Id == g.Area), g.Measure, g.Field, g.Target, g.ExcludeField) is { } p)
+                throw new InvalidOperationException($"{file}: \"{g.Title}\": {p}");
+        }
+        return [.. list];
+    }
+
+    /// <summary>What's wrong with a goal's definition against its area, in words, or null.</summary>
+    public static string? GoalProblem(AreaDefinition? area, string measure, string? field, decimal target, string? excludeField)
+    {
+        if (area is not { Kind: "log" }) return "Pick an area to count.";
+        if (measure is not ("days" or "total")) return "Count days or a total.";
+        if (target <= 0) return "The target should be more than zero.";
+        if (measure == "total" && area.Fields.FirstOrDefault(f => f.Key == field) is not { Type: "integer" or "number" })
+            return $"{area.Name} has no number field \"{field}\" to add up.";
+        if (excludeField is { Length: > 0 } && area.Fields.All(f => f.Key != excludeField))
+            return $"{area.Name} has no field \"{excludeField}\".";
+        return null;
     }
 
     private static List<StarterSchedule> LoadStarterSchedules(string file, List<AreaDefinition> areas)

@@ -51,6 +51,7 @@ async function followSchedule(a: NonNullable<ReturnType<typeof scheduleActionOf>
 async function follow(r: Notifications.NotificationResponse) {
   const sa = scheduleActionOf(r);
   if (sa) return followSchedule(sa);
+  if ((r.notification.request.content.data as { kind?: unknown } | undefined)?.kind === "goals") return void router.navigate("/today");
   const a = reminderActionOf(r);
   if (!a) return;
   try {
@@ -130,6 +131,7 @@ function Gate() {
       <Stack.Screen name="vocabulary/index" options={{ title: "Words" }} />
       <Stack.Screen name="vocabulary/[id]" options={{ title: "Word" }} />
       <Stack.Screen name="schedule/[id]" options={{ presentation: "modal", title: "Schedule" }} />
+      <Stack.Screen name="goal/[id]" options={{ presentation: "modal", title: "Weekly goal" }} />
     </Stack>
   );
 }
