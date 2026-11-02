@@ -166,3 +166,28 @@ Supersedes the model line of "Areas and capture" above.
 - **Capped at 100 words**, Apple's guidance for expected words. Mishearings
   (`heard`) are stored lowercased, up to 10 per word, for the sound-alike
   matching that comes next.
+
+## 2026-11-02 — Schedules and nudges (step 1)
+
+- **Done means an entry was logged.** A schedule names an area and, if it
+  needs to, text the medication must contain ("tirzepatide"). Saying "took my
+  tirzepatide shot" ticks it off; the Done button logs the same entry. No
+  separate done flag that could disagree with the history.
+- **Every-N-days schedules are counted from the last dose.** A Monday shot
+  taken Tuesday makes the next one due Tuesday, and the app says so twice: a
+  push ("Tirzepatide moved to Tuesdays") and a banner on Today with *Keep
+  Mondays* or *Tuesdays are fine*. Keeping goes to the first planned day after
+  the dose.
+- **Nudges are server pushes** (Expo), sent by a background job every five
+  minutes: at the due time, one follow-up two hours later, the snoozed one
+  when *In 1 hour* runs out (it replaces the follow-up), and the cadence note.
+  Never in quiet hours (22:00–07:30 local, stored per person, not on a screen
+  yet). `schedule_nudges` records each push before it's sent, so nothing goes
+  twice. The phone reports its time zone; without one, no nudges.
+- **Morning meds is one schedule with a list** of what to take, no
+  checkboxes. It counts any medications entry that day, so "took my morning
+  meds" and "took my Vyvanse and vitamins" both tick it off. Skipping Vyvanse
+  is said in the entry, not tracked.
+- **Kept simple on purpose:** no versioned history of schedule changes yet,
+  no adherence screens, no weekly goals. Goals (walk days and miles, lifting
+  days) are step 2.

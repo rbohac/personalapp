@@ -1,0 +1,27 @@
+{
+  "schedules": [
+    {
+      "title": "Morning meds & vitamins",
+      "area": "medications",
+      "everyDays": 1,
+      "at": "08:00",
+      "items": ["Vyvanse (skip some days)", "Vitamins (add the list)"]
+    },
+    {
+      "title": "Tirzepatide",
+      "area": "shots",
+      "match": "tirzepatide",
+      "everyDays": 7,
+      "at": "08:00",
+      "start": "monday"
+    },
+    {
+      "title": "Testosterone",
+      "area": "shots",
+      "match": "testosterone",
+      "everyDays": 7,
+      "at": "08:00",
+      "start": "monday"
+    }
+  ]
+}

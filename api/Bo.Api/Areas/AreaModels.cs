@@ -49,3 +49,21 @@ public sealed record VocabularyTerm
 }
 
 internal sealed record VocabularyFile(VocabularyTerm[]? Terms);
+
+/// <summary>
+/// A starter schedule from <c>areas/_schedules.json</c>, copied into a
+/// person's schedules the first time they're read. <see cref="Start"/> is a
+/// weekday name ("monday": the next one, today included) or a date.
+/// </summary>
+public sealed record StarterSchedule
+{
+    public required string Title { get; init; }
+    public required string Area { get; init; }
+    public string? Match { get; init; }
+    public int EveryDays { get; init; } = 1;
+    public string At { get; init; } = "08:00";
+    public string? Start { get; init; }
+    public string[] Items { get; init; } = [];
+}
+
+internal sealed record SchedulesFile(StarterSchedule[]? Schedules);

@@ -21,4 +21,5 @@ Pills and other daily medications taken. Injections go in **shots**.
 Add the ones you take, with their usual dose, so a name said by voice is
 spelled right and a missing dose can be filled in:
 
-- (none yet)
+- Vyvanse — mornings, skipped some days
+- Morning vitamins — taken with the morning meds (list to come)

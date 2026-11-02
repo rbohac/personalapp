@@ -21,6 +21,10 @@ export default function TabsLayout() {
         options={{ title: "Log", tabBarIcon: ({ color, size }) => <Ionicons name="mic-outline" color={String(color)} size={size} /> }}
       />
       <Tabs.Screen
+        name="today"
+        options={{ title: "Today", tabBarIcon: ({ color, size }) => <Ionicons name="today-outline" color={String(color)} size={size} /> }}
+      />
+      <Tabs.Screen
         name="tasks"
         options={{ title: "Tasks", tabBarIcon: ({ color, size }) => <Ionicons name="checkbox-outline" color={String(color)} size={size} /> }}
       />
