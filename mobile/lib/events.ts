@@ -3,9 +3,9 @@
  * capture — so a list already on screen refetches. No payload: the list
  * re-reads the server rather than trying to patch itself.
  */
-export type Topic = "tasks" | "entries";
+export type Topic = "tasks" | "entries" | "vocabulary";
 type Listener = () => void;
-const listeners: Record<Topic, Set<Listener>> = { tasks: new Set(), entries: new Set() };
+const listeners: Record<Topic, Set<Listener>> = { tasks: new Set(), entries: new Set(), vocabulary: new Set() };
 
 export function onChanged(topic: Topic, fn: Listener): () => void {
   listeners[topic].add(fn);
