@@ -67,3 +67,17 @@ public sealed record StarterSchedule
 }
 
 internal sealed record SchedulesFile(StarterSchedule[]? Schedules);
+
+/// <summary>A starter goal from <c>areas/_goals.json</c>, copied in the first time goals are read.</summary>
+public sealed record StarterGoal
+{
+    public required string Title { get; init; }
+    public required string Area { get; init; }
+    public string Measure { get; init; } = "days";
+    public string? Field { get; init; }
+    public decimal Target { get; init; }
+    public string? ExcludeField { get; init; }
+    public string[] ExcludeValues { get; init; } = [];
+}
+
+internal sealed record GoalsFile(StarterGoal[]? Goals);

@@ -22,6 +22,8 @@ export type VocabularyInput = components["schemas"]["VocabularyInput"];
 export type Schedule = components["schemas"]["ScheduleDto"];
 export type ScheduleInput = components["schemas"]["ScheduleInput"];
 export type ItemMark = components["schemas"]["ItemMark"];
+export type Goal = components["schemas"]["GoalDto"];
+export type GoalInput = components["schemas"]["GoalInput"];
 
 /**
  * The typed client. Every path, body and response type comes from the API's

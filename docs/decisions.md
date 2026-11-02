@@ -211,3 +211,18 @@ Supersedes the model line of "Areas and capture" above.
 - **Not taken yet is noticed:** the two-hour follow-up names what's left
   ("Not taken yet: Lisinopril-HCTZ") and opening it asks when to remind.
 - Ticks live in `schedule_marks` (migration 0006), one row per item per day.
+
+## 2026-11-02 — Weekly goals (step 2)
+
+- **A goal is a rule over a week of entries,** worked out on every read and
+  never stored as met: days with an entry, or the total of a number field,
+  against a target. Weeks run Monday–Sunday in the person's time zone. A
+  logged skip (`done: false`) doesn't count.
+- **Starters** (`areas/_goals.json`, copied in once, targets are guesses to
+  adjust): walk days ≥ 4, walking distance ≥ 10 mi, lifting days ≥ 3.
+  "Lifting" is any workout whose type doesn't contain run or walk — an
+  exclude list on the goal, editable, so it can evolve without code.
+- **Two pushes a week,** once each (`goal_nudges`): Thursday 6 PM if anything
+  is behind, Sunday 6 PM with how the week went. Fixed times for now.
+- **Shown on Today** under the schedules: a bar per goal, the week so far,
+  and last week's number. No history screens yet.

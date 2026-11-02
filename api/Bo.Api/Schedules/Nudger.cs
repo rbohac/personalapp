@@ -12,7 +12,7 @@ namespace Bo.Api.Schedules;
 /// schedule_nudges records each push, so a restart or an overlapping run
 /// never sends one twice.
 /// </summary>
-public sealed class Nudger(Db db, ExpoPush push, TimeProvider time, ILogger<Nudger> log) : BackgroundService
+public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProvider time, ILogger<Nudger> log) : BackgroundService
 {
     public const string Category = "bo.schedule";
     /// <summary>A daily list's nudge: "Took all" instead of "Done".</summary>
@@ -64,6 +64,26 @@ public sealed class Nudger(Db db, ExpoPush push, TimeProvider time, ILogger<Nudg
             }
         }
         await RemindItemsAsync(conn, ct);
+        await WeeklyGoalsAsync(conn, ct);
+    }
+
+    /// <summary>The Thursday check and the Sunday summary, once each per week per person.</summary>
+    private async Task WeeklyGoalsAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        var users = await conn.QueryAsync<Guid>(
+            "select distinct u.id from users u join push_devices d on d.user_id = u.id join goals g on g.user_id = u.id where u.time_zone is not null");
+        foreach (var user in users)
+        {
+            var clock = await ScheduleStore.ClockAsync(conn, user);
+            if (await goals.WeeklyPushAsync(conn, user, clock, time.GetUtcNow().UtcDateTime) is not { } owed) continue;
+            var (kind, week, message) = owed;
+            var claimed = await conn.ExecuteAsync(
+                "insert into goal_nudges (user_id, week, kind) values (@user, @week::date, @kind) on conflict do nothing", new { user, week, kind });
+            if (claimed == 0) continue;
+            var tokens = (await conn.QueryAsync<string>("select expo_token from push_devices where user_id = @user", new { user })).ToList();
+            var gone = await push.SendAsync(tokens, message, ct);
+            if (gone.Length > 0) await conn.ExecuteAsync("delete from push_devices where expo_token = any(@gone)", new { gone });
+        }
     }
 
     private sealed record DueItem(Guid ScheduleId, Guid UserId, string Title, string Item, string Day);
