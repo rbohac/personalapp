@@ -31,6 +31,15 @@
       "field": "minutes",
       "target": 15,
       "period": "day"
+    },
+    {
+      "title": "Protein",
+      "area": "nutrition",
+      "measure": "total",
+      "field": "protein",
+      "target": 200,
+      "targetFrom": "weight.pounds",
+      "period": "day"
     }
   ]
 }

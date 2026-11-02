@@ -15,11 +15,12 @@ internal static class ScheduleLogic
     /// Tuesday shot makes the next one due Tuesday). Returns the new next-due
     /// day and, when the dose wasn't on the planned day, the planned day.
     /// </summary>
-    public static (DateOnly Next, DateOnly? ShiftedFrom) AfterDose(ScheduleRow s, DateOnly doseDay)
+    /// <param name="dosesDone">Doses counted including this one (courses use it to pick the gap).</param>
+    public static (DateOnly? Next, DateOnly? ShiftedFrom) AfterDose(ScheduleRow s, DateOnly doseDay, int dosesDone)
     {
         var planned = Day(s.NextDue);
-        var next = doseDay.AddDays(s.EveryDays);
-        return (next, planned is { } p && p != doseDay ? p : null);
+        if (s.GapAfter(dosesDone) is not { } gap) return (null, null); // the course is over
+        return (doseDay.AddDays(gap), planned is { } p && p != doseDay ? p : null);
     }
 
     /// <summary>"Keep Mondays": go back to the planned rhythm, the first planned day after the dose.</summary>
@@ -45,16 +46,18 @@ internal static class ScheduleLogic
                 : new("due", dueAt, 0, "Due now");
         }
 
-        if (Day(s.NextDue) is not { } next) return new("upcoming", null, 0, "No date set");
+        if (s.Finished) return new("finished", null, 0, $"Finished · all {s.CourseTotal}");
+        if (Day(s.NextDue) is not { } next) return new("upcoming", null, 0, "Log the last one to start");
+        var course = s.Course ? $" · {s.DosesDone} of {s.CourseTotal} done" : "";
         var at = clock.Utc(next, s.AtMinute);
         if (next > today)
         {
             var days = next.DayNumber - today.DayNumber;
             var when = days == 1 ? "tomorrow" : days < 7 ? next.ToString("dddd", CultureInfo.InvariantCulture) : next.ToString("ddd MMM d", CultureInfo.InvariantCulture);
-            return new("upcoming", at, 0, $"Next {when}");
+            return new("upcoming", at, 0, $"Next {when}{course}");
         }
         if (next == today)
-            return utcNow < at ? new("later", at, 0, $"Due today at {Time(clock.Local(at))}") : new("due", at, 0, "Due today");
+            return utcNow < at ? new("later", at, 0, $"Due today at {Time(clock.Local(at))}{course}") : new("due", at, 0, $"Due today{course}");
         var late = today.DayNumber - next.DayNumber;
         return new("overdue", clock.Utc(today, s.AtMinute), late, late == 1 ? "1 day late" : $"{late} days late");
     }

@@ -286,3 +286,29 @@ Supersedes the model line of "Areas and capture" above.
 - **Two new areas:** `household` (minutes, what, where — Brock Road by
   default) and `health-events` (one-off procedures and the like: what, body
   part, amount, who). Areas are files, so these needed no code.
+
+## 2026-11-02 — New things to track, and nothing dropped
+
+- **Unsorted** catches anything no area fits, with the words as said and a
+  two-word "about", instead of the capture saying "nothing to log". When
+  something keeps landing there, the owner asks and it gets an area — the
+  owner chose that over the app drafting areas itself.
+- **New areas:** vitals (SpO2, temperature, heart rate), weight (lb), and
+  nutrition (protein in grams plus the food in the owner's words, estimated
+  and marked when no grams are said). The food words are kept on purpose,
+  to ask questions of later.
+- **Courses** (`schedules.intervals`): a schedule whose gaps change and then
+  stops — the Wolverine patch is every other day for three, then weekly, six
+  in all. The gap after dose n is `intervals[n-1]`; past the last, it's
+  finished. Doses are counted (`doses_done`).
+- **Heads-ups** (`heads_up_days`): a push that many days before a dose is
+  due, once per due date — Leqvio, 14 days ahead, every 182 days from the
+  last one (to confirm with the doctor).
+- **Past doses start a schedule:** a schedule with no date yet counts any
+  past dose, so logging old Leqvio injections with their dates sets the next
+  one. A new schedule with a date counts doses from a day before it was made.
+- **A goal's target can come from another reading** (`goals.target_from`):
+  protein is 1 g per pound of the latest weight as of each day, falling back
+  to 200 g until a weight is logged.
+- Migration 0011 adds the columns and the owner's Sermorelin, Wolverine
+  patch and Leqvio schedules and protein goal.

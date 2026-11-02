@@ -119,7 +119,7 @@ export default function HomeScreen() {
   // Now: due, late, later today, and what's done today. Coming up: the rest.
   const rank = (s: Schedule) => ({ overdue: 0, due: 1, later: 2, done: 3, upcoming: 4, paused: 5 })[s.status.state] ?? 4;
   const now = [...schedules].filter((x) => ["overdue", "due", "later", "done"].includes(x.status.state)).sort((a, b) => rank(a) - rank(b));
-  const upcoming = schedules.filter((x) => x.status.state === "upcoming");
+  const upcoming = schedules.filter((x) => x.status.state === "upcoming" || x.status.state === "finished");
   const soon = Date.now() + 3 * 24 * 3600e3;
   const tasksSoon = tasks
     .map((t) => ({ t, at: t.remindAt ?? t.dueAt }))

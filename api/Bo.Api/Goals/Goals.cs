@@ -40,9 +40,10 @@ internal sealed class GoalRow
     public string[] ExcludeValues { get; set; } = [];
     public bool Paused { get; set; }
     public string Period { get; set; } = "week";
+    public string? TargetFrom { get; set; }
 
     public const string Columns =
-        "id, user_id as userid, title, area, measure, field, target, exclude_field as excludefield, exclude_values as excludevalues, paused, period";
+        "id, user_id as userid, title, area, measure, field, target, exclude_field as excludefield, exclude_values as excludevalues, paused, period, target_from as targetfrom";
 }
 
 /// <summary>
@@ -65,10 +66,10 @@ public sealed class GoalStore(Db db, AreaCatalog catalog)
             foreach (var g in catalog.StarterGoals)
                 await conn.ExecuteAsync(
                     """
-                    insert into goals (user_id, title, area, measure, field, target, exclude_field, exclude_values, sort, period)
-                    values (@user, @Title, @Area, @Measure, @Field, @Target, @ExcludeField, @ExcludeValues, @sort, @Period)
+                    insert into goals (user_id, title, area, measure, field, target, exclude_field, exclude_values, sort, period, target_from)
+                    values (@user, @Title, @Area, @Measure, @Field, @Target, @ExcludeField, @ExcludeValues, @sort, @Period, @TargetFrom)
                     """,
-                    new { user, g.Title, g.Area, g.Measure, g.Field, g.Target, g.ExcludeField, g.ExcludeValues, sort = sort++, g.Period }, tx);
+                    new { user, g.Title, g.Area, g.Measure, g.Field, g.Target, g.ExcludeField, g.ExcludeValues, sort = sort++, g.Period, g.TargetFrom }, tx);
         }
         await tx.CommitAsync();
     }
@@ -117,26 +118,42 @@ public sealed class GoalStore(Db db, AreaCatalog catalog)
             new GoalProgress(value, g.Target, value >= g.Target, 7 - (today.DayNumber - week.DayNumber), label, last), g.Period, []);
     }
 
+    /// <summary>
+    /// The target on a day: a fixed number, or — with <c>target_from</c> — the
+    /// latest value of another reading as of that day (protein: 1 g per pound
+    /// of the latest weight). Falls back to the fixed target until there is one.
+    /// </summary>
+    internal static async Task<decimal> TargetAsync(NpgsqlConnection conn, GoalRow g, Clock clock, DateOnly day)
+    {
+        if (g.TargetFrom?.Split('.') is not [var area, var field]) return g.Target;
+        var v = await conn.ExecuteScalarAsync<string?>(
+            "select data->>@field from entries where user_id = @user and area = @area and at < @end and data->>@field is not null order by at desc limit 1",
+            new { user = g.UserId, area, field, end = clock.Utc(day.AddDays(1), 0) });
+        return decimal.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var t) && t > 0 ? Math.Round(t) : g.Target;
+    }
+
     /// <summary>A per-day goal: today so far, the last 7 days, and how many days this week reached it.</summary>
     private async Task<GoalDto> DailyDtoAsync(NpgsqlConnection conn, GoalRow g, Clock clock, DateOnly today, DateOnly week)
     {
+        async Task<(decimal Value, decimal Target)> On(DateOnly d) => (await ValueAsync(conn, g, clock, d, 1), await TargetAsync(conn, g, clock, d));
         var days = new List<GoalDay>();
         for (var d = today.AddDays(-6); d <= today; d = d.AddDays(1))
         {
-            var v = await ValueAsync(conn, g, clock, d, 1);
-            days.Add(new GoalDay(ScheduleLogic.Iso(d), v, v >= g.Target));
+            var (v, t) = await On(d);
+            days.Add(new GoalDay(ScheduleLogic.Iso(d), v, v >= t));
         }
         var daysMet = 0;
         for (var d = week; d <= today; d = d.AddDays(1))
-            if (await ValueAsync(conn, g, clock, d, 1) >= g.Target) daysMet++;
+            if (await On(d) is var x && x.Value >= x.Target) daysMet++;
         var lastWeekMet = 0;
         for (var d = week.AddDays(-7); d < week; d = d.AddDays(1))
-            if (await ValueAsync(conn, g, clock, d, 1) >= g.Target) lastWeekMet++;
+            if (await On(d) is var x && x.Value >= x.Target) lastWeekMet++;
         var value = days[^1].Value;
+        var target = await TargetAsync(conn, g, clock, today);
         var unit = Unit(g);
-        var label = $"{Num(value)} of {Num(g.Target)} {unit} today".Replace("  ", " ");
-        return new GoalDto(g.Id, g.Title, g.Area, g.Measure, g.Field, unit, g.Target, g.ExcludeField, g.ExcludeValues, g.Paused,
-            new GoalProgress(value, g.Target, value >= g.Target, 7 - (today.DayNumber - week.DayNumber), label, lastWeekMet, daysMet),
+        var label = $"{Num(value)} of {Num(target)} {unit} today".Replace("  ", " ");
+        return new GoalDto(g.Id, g.Title, g.Area, g.Measure, g.Field, unit, target, g.ExcludeField, g.ExcludeValues, g.Paused,
+            new GoalProgress(value, target, value >= target, 7 - (today.DayNumber - week.DayNumber), label, lastWeekMet, daysMet),
             g.Period, [.. days]);
     }
 

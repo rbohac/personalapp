@@ -78,6 +78,9 @@ public sealed class AreaCatalog
         {
             if (GoalProblem(areas.FirstOrDefault(a => a.Id == g.Area), g.Measure, g.Field, g.Target, g.ExcludeField) is { } p)
                 throw new InvalidOperationException($"{file}: \"{g.Title}\": {p}");
+            if (g.TargetFrom is { } tf && (tf.Split('.') is not [var ta, var tfield]
+                || areas.FirstOrDefault(a => a.Id == ta)?.Fields.FirstOrDefault(f => f.Key == tfield) is not { Type: "integer" or "number" }))
+                throw new InvalidOperationException($"{file}: \"{g.Title}\": targetFrom \"{tf}\" isn't a number field (area.field).");
         }
         return [.. list];
     }

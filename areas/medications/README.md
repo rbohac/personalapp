@@ -23,3 +23,5 @@ spelled right and a missing dose can be filled in:
 
 - Vyvanse — mornings, skipped some days
 - Morning vitamins — taken with the morning meds (list to come)
+- Wolverine patch — a patch, on a short course (every other day, then
+  weekly); "put on my Wolverine patch" is medication "Wolverine patch"
