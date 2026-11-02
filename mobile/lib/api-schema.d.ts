@@ -1289,6 +1289,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedules/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ItemInput"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedules/{id}/keep-day": {
         parameters: {
             query?: never;
@@ -1512,6 +1569,19 @@ export interface components {
                 [key: string]: string[];
             };
         };
+        ItemInput: {
+            item: string;
+            state: string;
+            /** Format: date-time */
+            remindAt?: null | string;
+        };
+        ItemMark: {
+            item: string;
+            state: string;
+            /** Format: date-time */
+            remindAt: null | string;
+            byEntry: boolean;
+        };
         JsonElement: unknown;
         Proposal: {
             kind: string;
@@ -1548,6 +1618,7 @@ export interface components {
             /** Format: date-time */
             lastDoneAt: null | string;
             status: components["schemas"]["ScheduleStatus"];
+            today: components["schemas"]["ItemMark"][];
         };
         ScheduleInput: {
             title: string;

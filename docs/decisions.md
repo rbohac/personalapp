@@ -191,3 +191,23 @@ Supersedes the model line of "Areas and capture" above.
 - **Kept simple on purpose:** no versioned history of schedule changes yet,
   no adherence screens, no weekly goals. Goals (walk days and miles, lifting
   days) are step 2.
+
+## 2026-11-02 — Daily lists are ticked item by item
+
+- **This reverses "no checkboxes"** from the morning, at the owner's ask:
+  each item on a daily list is a button on Today. Tap = taken (logs a
+  medications entry for that item, so the history is the same as saying
+  it); tap again = untick (removes that entry). Hold = Skip today, or Remind
+  me later.
+- **Done when nothing is left open:** every item taken, skipped, or put off.
+  "Took all" (the button, or the push's button) ticks whatever is open.
+- **Saying it still counts.** An entry logged today that names an item
+  ("vitamin D 2000 IU" for "Vitamin D") ticks it; one that names the whole
+  list ("took my morning meds" — the schedule's match text) ticks all.
+- **Putting one off** (the blood pressure pill before a flight): Remind me
+  later asks when — in 1, 2 or 4 hours, 6 PM, or a picked time — and a push
+  "Time to take …" rings then, with *Took it* / *In 1 hour*. Quiet hours don't
+  apply to a time chosen on purpose.
+- **Not taken yet is noticed:** the two-hour follow-up names what's left
+  ("Not taken yet: Lisinopril-HCTZ") and opening it asks when to remind.
+- Ticks live in `schedule_marks` (migration 0006), one row per item per day.

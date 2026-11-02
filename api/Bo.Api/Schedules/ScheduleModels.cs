@@ -10,7 +10,18 @@ namespace Bo.Api.Schedules;
 /// <param name="Status">What the app shows. See <see cref="ScheduleStatus"/>.</param>
 public record ScheduleDto(
     Guid Id, string Title, string Area, string? Match, int EveryDays, string At, string? NextDue,
-    string? ShiftedFrom, string[] Items, bool Paused, DateTime? SnoozedUntil, DateTime? LastDoneAt, ScheduleStatus Status);
+    string? ShiftedFrom, string[] Items, bool Paused, DateTime? SnoozedUntil, DateTime? LastDoneAt, ScheduleStatus Status,
+    ItemMark[] Today);
+
+/// <summary>
+/// One item of a daily schedule's list, today. State is open (still to take),
+/// taken, skipped, or later (a reminder is set for <see cref="RemindAt"/>).
+/// </summary>
+/// <param name="ByEntry">Taken because a logged entry names it (said or typed), not ticked here.</param>
+public record ItemMark(string Item, string State, DateTime? RemindAt, bool ByEntry);
+
+/// <summary>Tick one item: taken, open (untick), skipped, or later (needs RemindAt).</summary>
+public record ItemInput(string Item, string State, DateTimeOffset? RemindAt = null);
 
 /// <param name="State">done (today's is logged), later (due later today), due, overdue, upcoming (a later day), paused.</param>
 /// <param name="DueAt">When the current or next dose is due (UTC).</param>
@@ -51,6 +62,8 @@ internal sealed class ScheduleRow
         "snoozed_until as snoozeduntil, created_at as createdat";
 
     public bool Daily => EveryDays == 1;
+    /// <summary>A daily schedule with a list is ticked off item by item.</summary>
+    public bool ByItem => Daily && Items.Length > 0;
 }
 
 /// <summary>A person's clock: zone and quiet hours.</summary>

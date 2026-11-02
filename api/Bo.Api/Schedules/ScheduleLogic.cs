@@ -59,6 +59,48 @@ internal static class ScheduleLogic
         return new("overdue", clock.Utc(today, s.AtMinute), late, late == 1 ? "1 day late" : $"{late} days late");
     }
 
+    /// <summary>
+    /// A daily list, ticked item by item. It's done when nothing is left
+    /// open: every item taken, skipped, or put off to a reminder.
+    /// </summary>
+    public static ScheduleStatus StatusOfList(ScheduleRow s, Clock clock, DateTime utcNow, IReadOnlyList<ItemMark> marks)
+    {
+        if (s.Paused) return new("paused", null, 0, "Paused");
+        var dueAt = clock.Utc(clock.Today(utcNow), s.AtMinute);
+        var open = marks.Count(m => m.State == "open");
+        var taken = marks.Count(m => m.State == "taken");
+        if (open == 0)
+        {
+            var later = marks.Where(m => m.State == "later" && m.RemindAt is not null).OrderBy(m => m.RemindAt).FirstOrDefault();
+            var skipped = marks.Count(m => m.State == "skipped");
+            var label = later is not null ? $"{Name(later.Item)} at {Time(clock.Local(later.RemindAt!.Value))}"
+                : skipped > 0 ? $"Done · {skipped} skipped"
+                : "All taken";
+            return new("done", dueAt, 0, label);
+        }
+        var progress = taken > 0 ? $"{taken} of {marks.Count} · " : "";
+        return utcNow < dueAt
+            ? new("later", dueAt, 0, $"{progress}Due at {Time(clock.Local(dueAt))}")
+            : new("due", dueAt, 0, taken > 0 ? $"{taken} of {marks.Count} taken" : "Due now");
+    }
+
+    /// <summary>An item as a medication name: the text before any "(note)".</summary>
+    public static string Name(string item)
+    {
+        var i = item.IndexOf('(');
+        var name = (i > 0 ? item[..i] : item).Trim();
+        return name.Length > 0 ? name : item.Trim();
+    }
+
+    /// <summary>Does a logged medication name this item? Either contains the other, ignoring case.</summary>
+    public static bool Names(string? medication, string item)
+    {
+        if (string.IsNullOrWhiteSpace(medication)) return false;
+        var a = medication.Trim().ToLowerInvariant();
+        var b = Name(item).ToLowerInvariant();
+        return b.Length >= 3 && a.Length >= 3 && (a.Contains(b) || b.Contains(a));
+    }
+
     public static DateOnly? Day(string? iso) =>
         iso is { Length: > 0 } && DateOnly.TryParseExact(iso, "yyyy-MM-dd", out var d) ? d : null;
 
