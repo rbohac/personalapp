@@ -9,5 +9,7 @@ public static class AreaEndpoints
     {
         app.MapGet("/areas", (AreaCatalog catalog) => TypedResults.Ok(catalog.Areas.ToArray()))
             .WithTags("Areas").RequireAuthorization();
+        app.MapGet("/vocabulary", (AreaCatalog catalog) => TypedResults.Ok(catalog.Vocabulary.ToArray()))
+            .WithTags("Areas").RequireAuthorization();
     }
 }

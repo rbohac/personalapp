@@ -19,13 +19,16 @@ public sealed class AreaCatalog
     public IReadOnlyList<AreaDefinition> Areas { get; }
     /// <summary>areas/_capture.md — the parser's general rules.</summary>
     public string CaptureGuide { get; }
+    /// <summary>areas/_vocabulary.json — words the speech recognizer should expect.</summary>
+    public IReadOnlyList<VocabularyTerm> Vocabulary { get; }
 
     private readonly Dictionary<string, AreaDefinition> _byId;
 
-    private AreaCatalog(List<AreaDefinition> areas, string captureGuide)
+    private AreaCatalog(List<AreaDefinition> areas, string captureGuide, List<VocabularyTerm> vocabulary)
     {
         Areas = areas;
         CaptureGuide = captureGuide;
+        Vocabulary = vocabulary;
         _byId = areas.ToDictionary(a => a.Id);
     }
 
@@ -56,7 +59,23 @@ public sealed class AreaCatalog
         if (areas.Count(a => a.Kind == "tasks") != 1) throw new InvalidOperationException($"{dir}: exactly one area must have kind \"tasks\".");
 
         var capture = Path.Combine(dir, "_capture.md");
-        return new AreaCatalog(areas, File.Exists(capture) ? File.ReadAllText(capture) : "");
+        return new AreaCatalog(areas, File.Exists(capture) ? File.ReadAllText(capture) : "", LoadVocabulary(Path.Combine(dir, "_vocabulary.json")));
+    }
+
+    private static List<VocabularyTerm> LoadVocabulary(string file)
+    {
+        if (!File.Exists(file)) return [];
+        var parsed = JsonSerializer.Deserialize<VocabularyFile>(File.ReadAllText(file), Json)?.Terms ?? [];
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var terms = new List<VocabularyTerm>();
+        foreach (var t in parsed)
+        {
+            var term = t.Term?.Trim();
+            if (string.IsNullOrEmpty(term)) throw new InvalidOperationException($"{file}: a term is blank.");
+            if (!seen.Add(term)) throw new InvalidOperationException($"{file}: \"{term}\" is listed twice.");
+            terms.Add(t with { Term = term, Heard = t.Heard.Select(h => h.Trim()).Where(h => h.Length > 0).ToArray() });
+        }
+        return terms;
     }
 
     /// <summary>
