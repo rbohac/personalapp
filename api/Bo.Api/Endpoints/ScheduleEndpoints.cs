@@ -63,11 +63,11 @@ public static class ScheduleEndpoints
         await store.SeedOnceAsync(conn, user, clock, now); // a first schedule made by hand doesn't later get the starters beside it unseen
         var id = await conn.ExecuteScalarAsync<Guid>(
             """
-            insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, paused)
-            values (@user, @Title, @Area, @Match, @EveryDays, @AtMinute, @NextDue::date, @Items, @Paused)
+            insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, paused, rotation)
+            values (@user, @Title, @Area, @Match, @EveryDays, @AtMinute, @NextDue::date, @Items, @Paused, @Rotation)
             returning id
             """,
-            new { user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused });
+            new { user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation });
         var s = (await ScheduleStore.GetAsync(conn, user, id))!;
         return TypedResults.Created($"/schedules/{id}", await ScheduleStore.DtoAsync(conn, s, clock, now));
     }
@@ -84,10 +84,10 @@ public static class ScheduleEndpoints
             """
             update schedules set title = @Title, area = @Area, match_text = @Match, every_days = @EveryDays, at_minute = @AtMinute,
               shifted_from = case when every_days = @EveryDays and next_due is not distinct from @NextDue::date then shifted_from end,
-              next_due = @NextDue::date, items = @Items, paused = @Paused, updated_at = now()
+              next_due = @NextDue::date, items = @Items, paused = @Paused, rotation = @Rotation, updated_at = now()
             where id = @id and user_id = @user
             """,
-            new { id, user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused });
+            new { id, user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation });
         if (n == 0) return TypedResults.NotFound();
         return TypedResults.Ok(await Fresh(conn, user, id, clock, now));
     }
@@ -166,7 +166,7 @@ public static class ScheduleEndpoints
         return await ScheduleStore.DtoAsync(conn, s, clock, now);
     }
 
-    private sealed record Cleaned(string Title, string Area, string? Match, int EveryDays, int AtMinute, string? NextDue, string[] Items, bool Paused);
+    private sealed record Cleaned(string Title, string Area, string? Match, int EveryDays, int AtMinute, string? NextDue, string[] Items, bool Paused, string[] Rotation);
 
     private static Cleaned? Clean(ScheduleInput b, ScheduleStore store, DateOnly today)
     {
@@ -175,7 +175,8 @@ public static class ScheduleEndpoints
         var next = every > 1 ? ScheduleLogic.Iso(ScheduleLogic.Day(b.NextDue) ?? today) : null;
         var items = (b.Items ?? []).Select(i => i.Trim()).Where(i => i.Length > 0).Select(i => i.Length > 80 ? i[..80] : i).Take(40).ToArray();
         var match = b.Match?.Trim() is { Length: > 0 } m ? m : null;
-        return new Cleaned(b.Title.Trim(), b.Area, match, every, ScheduleLogic.Minute(b.At)!.Value, next, items, b.Paused);
+        var rotation = (b.Rotation ?? []).Select(r => r.Trim()).Where(r => r.Length > 0).Distinct().ToArray();
+        return new Cleaned(b.Title.Trim(), b.Area, match, every, ScheduleLogic.Minute(b.At)!.Value, next, items, b.Paused, rotation);
     }
 
     private static string? Problem(ScheduleInput b, ScheduleStore store) =>
@@ -184,7 +185,7 @@ public static class ScheduleEndpoints
         : b.EveryDays is < 1 or > 365 ? "Every 1 to 365 days."
         : ScheduleLogic.Minute(b.At) is null ? "Time should be HH:mm."
         : b.NextDue is { Length: > 0 } && ScheduleLogic.Day(b.NextDue) is null ? "Next date should be yyyy-MM-dd."
-        : null;
+        : store.RotationProblem(b.Area, b.Rotation ?? []);
 
     private static ValidationProblem Invalid(string? message) =>
         TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["schedule"] = [message ?? "Not valid."] });

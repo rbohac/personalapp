@@ -39,15 +39,15 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             foreach (var s in catalog.StarterSchedules)
                 await conn.ExecuteAsync(
                     """
-                    insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items)
-                    values (@user, @title, @area, @match, @every, @at, @next::date, @items)
+                    insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, rotation)
+                    values (@user, @title, @area, @match, @every, @at, @next::date, @items, @rotation)
                     """,
                     new
                     {
                         user, title = s.Title, area = s.Area, match = s.Match, every = s.EveryDays,
                         at = ScheduleLogic.Minute(s.At) ?? 480,
                         next = s.EveryDays > 1 ? ScheduleLogic.Iso(ScheduleLogic.StartDay(s.Start, today)) : null,
-                        items = s.Items,
+                        items = s.Items, rotation = s.Rotation,
                     }, tx);
         }
         await tx.CommitAsync();
@@ -75,6 +75,31 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
               and (@since::timestamptz is null or at >= @since)
             """,
             new { user = s.UserId, area = s.Area, match = Escape(s.MatchText), since });
+
+    /// <summary>
+    /// The site for the next dose: the one after the newest dose that logged
+    /// a site in the rotation (a dose with no side said doesn't move it). The
+    /// first in the list when none has.
+    /// </summary>
+    internal static async Task<string?> NextSiteAsync(NpgsqlConnection conn, ScheduleRow s)
+    {
+        if (s.Rotation.Length == 0) return null;
+        var last = await conn.ExecuteScalarAsync<string?>(
+            """
+            select data->>'site' from entries
+            where user_id = @user and area = @area
+              and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
+              and coalesce(data->>'event', 'taken') = 'taken'
+              and data->>'site' = any(@rotation)
+            order by at desc limit 1
+            """,
+            new { user = s.UserId, area = s.Area, match = Escape(s.MatchText), rotation = s.Rotation });
+        var i = last is null ? -1 : Array.IndexOf(s.Rotation, last);
+        return s.Rotation[(i + 1) % s.Rotation.Length];
+    }
+
+    /// <summary>"left-thigh" → "left thigh".</summary>
+    internal static string SiteLabel(string site) => site.Replace('-', ' ');
 
     private static string? Escape(string? m) =>
         m is { Length: > 0 } ? m.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_") : null;
@@ -131,7 +156,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             status = ScheduleLogic.StatusOf(s, clock, utcNow, doneToday);
         }
         return new ScheduleDto(s.Id, s.Title, s.Area, s.MatchText, s.EveryDays, ScheduleLogic.Hhmm(s.AtMinute), s.NextDue,
-            s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status, marks);
+            s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status, marks, s.Rotation, await NextSiteAsync(conn, s));
     }
 
     private sealed record MarkRow(string Item, string State, Guid? EntryId, DateTime? RemindAt);
@@ -233,6 +258,8 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         if (area is null) return $"No area \"{s.Area}\".";
         var raw = new Dictionary<string, string?> { ["medication"] = s.MatchText ?? s.Title };
         if (area.Fields.Any(f => f.Key == "event")) raw["event"] = "taken";
+        // Done on a rotating shot logs the side it was due on.
+        if (await NextSiteAsync(conn, s) is { } site) raw["site"] = site;
         var (data, problems) = catalog.Validate(area, raw);
         if (problems.Count > 0) return string.Join(" ", problems);
         await conn.ExecuteAsync(
@@ -242,4 +269,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     }
 
     internal bool IsLogArea(string id) => catalog.Find(id) is { Kind: "log" };
+
+    internal string? RotationProblem(string area, string[] rotation) =>
+        catalog.Find(area) is { } a ? AreaCatalog.RotationProblem(a, rotation) : null;
 }

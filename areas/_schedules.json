@@ -17,7 +17,11 @@
       "match": "tirzepatide",
       "everyDays": 7,
       "at": "08:00",
-      "start": "monday"
+      "start": "monday",
+      "rotation": [
+        "left-abdomen",
+        "right-abdomen"
+      ]
     },
     {
       "title": "Testosterone",
@@ -25,7 +29,11 @@
       "match": "testosterone",
       "everyDays": 7,
       "at": "08:00",
-      "start": "monday"
+      "start": "monday",
+      "rotation": [
+        "left-thigh",
+        "right-thigh"
+      ]
     }
   ]
 }

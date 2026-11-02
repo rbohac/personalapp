@@ -64,6 +64,8 @@ public sealed record StarterSchedule
     public string At { get; init; } = "08:00";
     public string? Start { get; init; }
     public string[] Items { get; init; } = [];
+    /// <summary>Sites to alternate, in order (options of the area's site field).</summary>
+    public string[] Rotation { get; init; } = [];
 }
 
 internal sealed record SchedulesFile(StarterSchedule[]? Schedules);

@@ -226,3 +226,18 @@ Supersedes the model line of "Areas and capture" above.
   is behind, Sunday 6 PM with how the week went. Fixed times for now.
 - **Shown on Today** under the schedules: a bar per goal, the week so far,
   and last week's number. No history screens yet.
+
+## 2026-11-02 — Shot sites alternate
+
+- **A schedule can carry a rotation** of sites (testosterone: left thigh,
+  right thigh; tirzepatide: left belly, right belly). The next site is the
+  one after the newest dose that logged a site in the rotation, read from
+  the entries — nothing to keep in step by hand. A dose logged with no side
+  doesn't move it.
+- **Saying a bare side is enough.** The shots guide tells the parser that
+  "left"/"right" means that shot's usual spot, and to leave the site empty
+  rather than guess when no side is said.
+- **The reminder says the side** ("Right thigh this time"), Today shows
+  "Next: …", and Done from the app or the push logs the side that was due.
+- Migration 0008 adds `schedules.rotation` and sets it on the two starter
+  shot schedules.

@@ -1810,6 +1810,8 @@ export interface components {
             lastDoneAt: null | string;
             status: components["schemas"]["ScheduleStatus"];
             today: components["schemas"]["ItemMark"][];
+            rotation: string[];
+            nextSite: null | string;
         };
         ScheduleInput: {
             title: string;
@@ -1822,6 +1824,7 @@ export interface components {
             items?: null | string[];
             /** @default false */
             paused: boolean;
+            rotation?: null | string[];
         };
         ScheduleStatus: {
             state: string;

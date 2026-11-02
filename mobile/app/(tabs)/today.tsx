@@ -7,7 +7,7 @@ import { useRemindPicker } from "../../components/RemindPicker";
 import type { Goal, ItemMark, Schedule } from "../../lib/api";
 import { listGoals } from "../../lib/goals";
 import { onChanged } from "../../lib/events";
-import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, setItem, shortDate, weekday, type ItemState } from "../../lib/schedules";
+import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, setItem, shortDate, siteLabel, weekday, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
 /** What's due: each schedule with where it stands, the list of what to take, and Done. */
@@ -135,6 +135,11 @@ function Card({ c, sch, busy, onAct, onAskWhen }: { c: Palette; sch: Schedule; b
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={{ color: c.ink, fontSize: 17, fontWeight: "600", opacity: dimmed ? 0.75 : 1 }}>{sch.title}</Text>
           <Text style={{ color: c.muted, fontSize: 13 }}>{cadenceLabel(sch)}</Text>
+          {sch.nextSite ? (
+            <Text style={{ color: st === "due" || st === "overdue" ? tone : c.ink, fontSize: 14, fontWeight: "500" }}>
+              Next: {siteLabel(sch.nextSite)}
+            </Text>
+          ) : null}
         </View>
         <View style={{ alignItems: "flex-end", gap: 2 }}>
           {st === "done" ? <Ionicons name="checkmark-circle" size={20} color={c.muted} /> : null}

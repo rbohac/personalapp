@@ -114,6 +114,8 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
         }
     }
 
+    private static string Cap(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
     /// <summary>
     /// The pushes this schedule could owe right now, each keyed by (day, kind).
     /// The caller sends the ones not already sent: a note about a moved
@@ -142,6 +144,7 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
 
         var lateNote = d.Status.State == "overdue" ? $"{d.Status.Label}. " : "";
         var body = lateNote + (items ?? (s.Daily ? "Due now." : "Due today."));
+        if (d.NextSite is { } site) body = $"{lateNote}{Cap(ScheduleStore.SiteLabel(site))} this time.{(items is null ? "" : " " + items)}";
         var category = Category;
         if (s.ByItem)
         {
