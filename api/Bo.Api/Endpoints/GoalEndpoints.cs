@@ -42,12 +42,12 @@ public static class GoalEndpoints
         var c = Clean(body);
         var id = await conn.ExecuteScalarAsync<Guid>(
             """
-            insert into goals (user_id, title, area, measure, field, target, exclude_field, exclude_values, paused, sort)
-            values (@user, @Title, @Area, @Measure, @Field, @Target, @ExcludeField, @ExcludeValues, @Paused,
+            insert into goals (user_id, title, area, measure, field, target, exclude_field, exclude_values, paused, period, sort)
+            values (@user, @Title, @Area, @Measure, @Field, @Target, @ExcludeField, @ExcludeValues, @Paused, @Period,
               coalesce((select max(sort) + 1 from goals where user_id = @user), 0))
             returning id
             """,
-            new { user, c.Title, c.Area, c.Measure, c.Field, c.Target, c.ExcludeField, c.ExcludeValues, c.Paused });
+            new { user, c.Title, c.Area, c.Measure, c.Field, c.Target, c.ExcludeField, c.ExcludeValues, c.Paused, c.Period });
         return TypedResults.Created($"/goals/{id}", await Fresh(conn, store, user, id, time));
     }
 
@@ -60,10 +60,10 @@ public static class GoalEndpoints
         var n = await conn.ExecuteAsync(
             """
             update goals set title = @Title, area = @Area, measure = @Measure, field = @Field, target = @Target,
-              exclude_field = @ExcludeField, exclude_values = @ExcludeValues, paused = @Paused, updated_at = now()
+              exclude_field = @ExcludeField, exclude_values = @ExcludeValues, paused = @Paused, period = @Period, updated_at = now()
             where id = @id and user_id = @user
             """,
-            new { id, user, c.Title, c.Area, c.Measure, c.Field, c.Target, c.ExcludeField, c.ExcludeValues, c.Paused });
+            new { id, user, c.Title, c.Area, c.Measure, c.Field, c.Target, c.ExcludeField, c.ExcludeValues, c.Paused, c.Period });
         return n == 0 ? TypedResults.NotFound() : TypedResults.Ok(await Fresh(conn, store, user, id, time));
     }
 
@@ -90,6 +90,7 @@ public static class GoalEndpoints
 
     private static string? Problem(GoalInput b, AreaCatalog catalog) =>
         string.IsNullOrWhiteSpace(b.Title) ? "Give it a name."
+        : b.Period is not ("day" or "week") ? "Per day or per week."
         : AreaCatalog.GoalProblem(catalog.Find(b.Area), b.Measure, b.Field, b.Target, b.ExcludeField);
 
     private static ValidationProblem Invalid(string message) =>
