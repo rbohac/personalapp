@@ -13,7 +13,7 @@ import { EAS_PROJECT_ID } from "./config";
  */
 const INSTALL_KEY = "bo.install-id";
 
-async function installationId(): Promise<string> {
+export async function installationId(): Promise<string> {
   const kept = await SecureStore.getItemAsync(INSTALL_KEY);
   if (kept) return kept;
   const id = `${Platform.OS}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -40,3 +40,23 @@ export async function refreshPushRegistration(): Promise<void> {
     /* offline, simulator, no project id yet — Settings shows the reason */
   }
 }
+
+export type PushStatus = Awaited<ReturnType<typeof pushStatus>>;
+
+/** What the server knows: time zone, phones registered, the last pushes and what happened to them. */
+export async function pushStatus() {
+  return must(await api.GET("/devices/status", { params: { query: { installationId: await installationId() } } }));
+}
+
+/** A push from the server to this phone; waits for Apple's answer. */
+export async function testServerPush() {
+  return must(await api.POST("/devices/test"));
+}
+
+export const OUTCOME_LABEL: Record<string, string> = {
+  delivered: "Delivered",
+  sent: "Sent, waiting for Apple",
+  failed: "Failed",
+  "no-devices": "No phone registered",
+  disabled: "Push turned off on the server",
+};

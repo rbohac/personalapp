@@ -5,7 +5,7 @@ using Npgsql;
 namespace Bo.Api.Schedules;
 
 /// <summary>
-/// Every five minutes: for each person with a phone registered, bring each
+/// Every five minutes: for each person with schedules, bring each
 /// schedule up to date and send what's owed — the nudge at the due time, one
 /// follow-up two hours later, the snoozed one when its snooze ends, and a
 /// note when a late dose moved the cadence. Never during quiet hours.
@@ -35,11 +35,10 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
     {
         await using var conn = await db.OpenAsync(ct);
         var users = await conn.QueryAsync<Guid>(
-            "select distinct u.id from users u join push_devices d on d.user_id = u.id join schedules s on s.user_id = u.id where u.time_zone is not null");
+            "select distinct u.id from users u join schedules s on s.user_id = u.id where u.time_zone is not null");
         foreach (var user in users)
         {
             var clock = await ScheduleStore.ClockAsync(conn, user);
-            var tokens = (await conn.QueryAsync<string>("select expo_token from push_devices where user_id = @user", new { user })).ToList();
             foreach (var s in await ScheduleStore.ListAsync(conn, user))
             {
                 if (s.Paused) continue;
@@ -54,24 +53,21 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
                         "insert into schedule_nudges (schedule_id, day, kind) values (@id, @day::date, @kind) on conflict do nothing",
                         new { s.Id, day, kind });
                     if (claimed == 0) continue;
-                    var gone = await push.SendAsync(tokens, message, ct);
-                    if (gone.Length > 0)
-                    {
-                        await conn.ExecuteAsync("delete from push_devices where expo_token = any(@gone)", new { gone });
-                        tokens.RemoveAll(gone.Contains);
-                    }
+                    await push.SendAsync(user, message, ct);
                 }
             }
         }
         await RemindItemsAsync(conn, ct);
         await WeeklyGoalsAsync(conn, ct);
+        await push.CheckReceiptsAsync(ct);
+        await push.PruneAsync(conn);
     }
 
     /// <summary>The Thursday check and the Sunday summary, once each per week per person.</summary>
     private async Task WeeklyGoalsAsync(NpgsqlConnection conn, CancellationToken ct)
     {
         var users = await conn.QueryAsync<Guid>(
-            "select distinct u.id from users u join push_devices d on d.user_id = u.id join goals g on g.user_id = u.id where u.time_zone is not null");
+            "select distinct u.id from users u join goals g on g.user_id = u.id where u.time_zone is not null");
         foreach (var user in users)
         {
             var clock = await ScheduleStore.ClockAsync(conn, user);
@@ -80,9 +76,7 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
             var claimed = await conn.ExecuteAsync(
                 "insert into goal_nudges (user_id, week, kind) values (@user, @week::date, @kind) on conflict do nothing", new { user, week, kind });
             if (claimed == 0) continue;
-            var tokens = (await conn.QueryAsync<string>("select expo_token from push_devices where user_id = @user", new { user })).ToList();
-            var gone = await push.SendAsync(tokens, message, ct);
-            if (gone.Length > 0) await conn.ExecuteAsync("delete from push_devices where expo_token = any(@gone)", new { gone });
+            await push.SendAsync(user, message, ct);
         }
     }
 
@@ -104,13 +98,11 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
             """);
         foreach (var d in due)
         {
-            var tokens = (await conn.QueryAsync<string>("select expo_token from push_devices where user_id = @u", new { u = d.UserId })).ToList();
-            var gone = await push.SendAsync(tokens, new PushMessage(
+            await push.SendAsync(d.UserId, new PushMessage(
                 $"Time to take {ScheduleLogic.Name(d.Item)}",
                 $"You put it off from {d.Title}.",
                 new { kind = "schedule-item", scheduleId = d.ScheduleId, item = d.Item },
                 ItemCategory), ct);
-            if (gone.Length > 0) await conn.ExecuteAsync("delete from push_devices where expo_token = any(@gone)", new { gone });
         }
     }
 

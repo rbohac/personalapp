@@ -548,6 +548,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    installationId?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PushStatus"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PushLogEntry"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/entries": {
         parameters: {
             query?: never;
@@ -1785,6 +1857,28 @@ export interface components {
             summary: string;
             task: null | components["schemas"]["TaskProposal"];
             problems: string[];
+        };
+        PushDevice: {
+            platform: string;
+            token: string;
+            /** Format: date-time */
+            lastSeenAt: string;
+            thisPhone: boolean;
+        };
+        PushLogEntry: {
+            /** Format: date-time */
+            at: string;
+            title: string;
+            /** Format: int32 */
+            devices: number | string;
+            outcome: string;
+            detail: null | string;
+        };
+        PushStatus: {
+            timeZone: null | string;
+            quietHours: string;
+            devices: components["schemas"]["PushDevice"][];
+            recent: components["schemas"]["PushLogEntry"][];
         };
         RegisterDeviceRequest: {
             installationId: string;
