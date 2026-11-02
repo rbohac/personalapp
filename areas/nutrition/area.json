@@ -1,0 +1,14 @@
+{
+  "id": "nutrition",
+  "name": "Nutrition",
+  "icon": "nutrition-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "protein", "label": "Protein", "type": "number", "unit": "g", "min": 0, "max": 500 },
+    { "key": "food", "label": "What", "type": "text" },
+    { "key": "estimated", "label": "Estimated", "type": "boolean", "trueLabel": "est.", "falseLabel": "" },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{protein} g protein · {food}",
+  "patterns": []
+}

@@ -66,6 +66,10 @@ public sealed record StarterSchedule
     public string[] Items { get; init; } = [];
     /// <summary>Sites to alternate, in order (options of the area's site field).</summary>
     public string[] Rotation { get; init; } = [];
+    /// <summary>A course: the gap after dose n is Intervals[n-1]; the course ends after the last.</summary>
+    public int[] Intervals { get; init; } = [];
+    /// <summary>Push this many days before a dose is due.</summary>
+    public int HeadsUpDays { get; init; }
 }
 
 internal sealed record SchedulesFile(StarterSchedule[]? Schedules);
@@ -82,6 +86,8 @@ public sealed record StarterGoal
     public string[] ExcludeValues { get; init; } = [];
     /// <summary>week (default) or day.</summary>
     public string Period { get; init; } = "week";
+    /// <summary>"area.field": the target is that field's latest value (protein = latest weight).</summary>
+    public string? TargetFrom { get; init; }
 }
 
 internal sealed record GoalsFile(StarterGoal[]? Goals);

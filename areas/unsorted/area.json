@@ -1,0 +1,12 @@
+{
+  "id": "unsorted",
+  "name": "Unsorted",
+  "icon": "file-tray-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "text", "label": "What was said", "type": "text", "required": true },
+    { "key": "about", "label": "About", "type": "text" }
+  ],
+  "summary": "{text}",
+  "patterns": []
+}

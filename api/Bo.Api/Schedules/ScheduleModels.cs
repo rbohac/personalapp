@@ -25,7 +25,7 @@ public record ItemMark(string Item, string State, DateTime? RemindAt, bool ByEnt
 /// <summary>Tick one item: taken, open (untick), skipped, or later (needs RemindAt).</summary>
 public record ItemInput(string Item, string State, DateTimeOffset? RemindAt = null);
 
-/// <param name="State">done (today's is logged), later (due later today), due, overdue, upcoming (a later day), paused.</param>
+/// <param name="State">done (today's is logged), later (due later today), due, overdue, upcoming (a later day), paused, finished (a course is over).</param>
 /// <param name="DueAt">When the current or next dose is due (UTC).</param>
 /// <param name="DaysLate">Overdue only.</param>
 public record ScheduleStatus(string State, DateTime? DueAt, int DaysLate, string Label);
@@ -55,18 +55,28 @@ internal sealed class ScheduleRow
     public DateTime? LastEntryAt { get; set; }
     public string[] Items { get; set; } = [];
     public string[] Rotation { get; set; } = [];
+    public int[] Intervals { get; set; } = [];
+    public int DosesDone { get; set; }
+    public int HeadsUpDays { get; set; }
     public bool Paused { get; set; }
     public DateTime? SnoozedUntil { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public const string Columns =
         "id, user_id as userid, title, area, match_text as matchtext, every_days as everydays, at_minute as atminute, " +
-        "next_due::text as nextdue, shifted_from::text as shiftedfrom, last_entry_at as lastentryat, items, rotation, paused, " +
+        "next_due::text as nextdue, shifted_from::text as shiftedfrom, last_entry_at as lastentryat, items, rotation, " +
+        "intervals, doses_done as dosesdone, heads_up_days as headsupdays, paused, " +
         "snoozed_until as snoozeduntil, created_at as createdat";
 
     public bool Daily => EveryDays == 1;
     /// <summary>A daily schedule with a list is ticked off item by item.</summary>
     public bool ByItem => Daily && Items.Length > 0;
+    /// <summary>A course with a set number of doses.</summary>
+    public bool Course => Intervals.Length > 0;
+    public int CourseTotal => Intervals.Length + 1;
+    public bool Finished => Course && DosesDone >= CourseTotal;
+    /// <summary>The gap after the <paramref name="n"/>th dose, or null when a course is over.</summary>
+    public int? GapAfter(int n) => !Course ? EveryDays : n >= 1 && n <= Intervals.Length ? Intervals[n - 1] : null;
 }
 
 /// <summary>A person's clock: zone and quiet hours.</summary>

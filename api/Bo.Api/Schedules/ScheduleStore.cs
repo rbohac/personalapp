@@ -39,15 +39,15 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             foreach (var s in catalog.StarterSchedules)
                 await conn.ExecuteAsync(
                     """
-                    insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, rotation)
-                    values (@user, @title, @area, @match, @every, @at, @next::date, @items, @rotation)
+                    insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, rotation, intervals, heads_up_days)
+                    values (@user, @title, @area, @match, @every, @at, @next::date, @items, @rotation, @intervals, @headsUp)
                     """,
                     new
                     {
                         user, title = s.Title, area = s.Area, match = s.Match, every = s.EveryDays,
                         at = ScheduleLogic.Minute(s.At) ?? 480,
                         next = s.EveryDays > 1 ? ScheduleLogic.Iso(ScheduleLogic.StartDay(s.Start, today)) : null,
-                        items = s.Items, rotation = s.Rotation,
+                        items = s.Items, rotation = s.Rotation, intervals = s.Intervals, headsUp = s.HeadsUpDays,
                     }, tx);
         }
         await tx.CommitAsync();
@@ -111,30 +111,38 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// </summary>
     internal static async Task<bool> SyncAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock)
     {
-        if (s.Daily) return false;
-        var since = s.LastEntryAt ?? s.CreatedAt;
-        var dose = await conn.ExecuteScalarAsync<DateTime?>(
+        if (s.Daily || s.Finished) return false;
+        // Doses since the last one counted. A schedule with no date yet takes
+        // any past dose, so logging "my Leqvio was June 3rd" starts it from June.
+        // A new one with a date counts from a day before it was made, so a
+        // dose taken that morning, before the schedule existed, still counts.
+        DateTime? since = s.LastEntryAt ?? (s.NextDue is null ? null : s.CreatedAt.AddDays(-1));
+        var found = await conn.QuerySingleAsync<(DateTime? Dose, int Count)>(
             """
-            select max(at) from entries
+            select max(at), count(*)::int from entries
             where user_id = @user and area = @area
               and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
               and coalesce(data->>'event', 'taken') = 'taken'
-              and at > @since
+              and (@since::timestamptz is null or at > @since)
             """,
             new { user = s.UserId, area = s.Area, match = Escape(s.MatchText), since });
-        if (dose is null) return false;
+        if (found.Dose is not { } dose) return false;
 
-        var (next, shifted) = ScheduleLogic.AfterDose(s, clock.Today(dose.Value));
+        var done = s.DosesDone + found.Count;
+        var (next, shifted) = ScheduleLogic.AfterDose(s, clock.Today(dose), done);
+        var nextIso = next is { } n ? ScheduleLogic.Iso(n) : null;
+        var shiftedIso = shifted is { } d ? ScheduleLogic.Iso(d) : null;
         await conn.ExecuteAsync(
             """
-            update schedules set next_due = @next::date, shifted_from = @shifted::date, last_entry_at = @dose,
-              snoozed_until = null, updated_at = now()
+            update schedules set next_due = @nextIso::date, shifted_from = @shiftedIso::date, last_entry_at = @dose,
+              doses_done = @done, snoozed_until = null, updated_at = now()
             where id = @id
             """,
-            new { s.Id, next = ScheduleLogic.Iso(next), shifted = shifted is { } d ? ScheduleLogic.Iso(d) : null, dose });
-        s.NextDue = ScheduleLogic.Iso(next);
-        s.ShiftedFrom = shifted is { } x ? ScheduleLogic.Iso(x) : null;
+            new { s.Id, nextIso, shiftedIso, dose, done });
+        s.NextDue = nextIso;
+        s.ShiftedFrom = shiftedIso;
         s.LastEntryAt = dose;
+        s.DosesDone = done;
         s.SnoozedUntil = null;
         return shifted is not null;
     }

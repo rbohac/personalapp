@@ -129,6 +129,18 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
                 new { kind = "schedule-shift", scheduleId = s.Id }));
         }
 
+        // A heads-up ahead of a dose (Leqvio: two weeks out), once per due date, at the usual time.
+        if (s.HeadsUpDays > 0 && ScheduleLogic.Day(s.NextDue) is { } due)
+        {
+            var todayDay = clock.Today(now);
+            var daysTo = due.DayNumber - todayDay.DayNumber;
+            if (daysTo > 0 && daysTo <= s.HeadsUpDays && now >= clock.Utc(todayDay, s.AtMinute))
+                yield return (ScheduleLogic.Iso(due), "headsup", new PushMessage(
+                    $"{s.Title} is coming up",
+                    $"Due {due:ddd MMM d} — in {daysTo} {(daysTo == 1 ? "day" : "days")}. Time to book it if it needs booking.",
+                    new { kind = "schedule", scheduleId = s.Id }));
+        }
+
         if (d.Status.State is not ("due" or "overdue") || d.Status.DueAt is not { } dueAt) yield break;
 
         var snoozedToday = s.SnoozedUntil is { } su && su >= clock.StartOfToday(now);

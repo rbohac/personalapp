@@ -34,6 +34,36 @@
         "left-thigh",
         "right-thigh"
       ]
+    },
+    {
+      "title": "Sermorelin",
+      "area": "shots",
+      "match": "sermorelin",
+      "everyDays": 7,
+      "at": "08:00"
+    },
+    {
+      "title": "Wolverine patch",
+      "area": "medications",
+      "match": "wolverine",
+      "everyDays": 2,
+      "at": "08:00",
+      "start": "today",
+      "intervals": [
+        2,
+        2,
+        7,
+        7,
+        7
+      ]
+    },
+    {
+      "title": "Leqvio",
+      "area": "shots",
+      "match": "leqvio",
+      "everyDays": 182,
+      "at": "08:00",
+      "headsUpDays": 14
     }
   ]
 }

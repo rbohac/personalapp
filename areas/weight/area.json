@@ -1,0 +1,12 @@
+{
+  "id": "weight",
+  "name": "Weight",
+  "icon": "scale-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "pounds", "label": "Weight", "type": "number", "unit": "lb", "min": 50, "max": 700, "required": true },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{pounds} lb",
+  "patterns": ["^(?:weight|weighed|i weigh)\\s*(?<pounds>\\d{2,3}(?:\\.\\d)?)"]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "vitals",
+  "name": "Vitals",
+  "icon": "pulse-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "spo2", "label": "SpO2", "type": "integer", "unit": "%", "min": 50, "max": 100 },
+    { "key": "temp", "label": "Temperature", "type": "number", "unit": "°F", "min": 90, "max": 110 },
+    { "key": "heart_rate", "label": "Heart rate", "type": "integer", "unit": "bpm", "min": 20, "max": 250 },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "SpO2 {spo2}% · {temp}°F · {heart_rate} bpm",
+  "patterns": []
+}

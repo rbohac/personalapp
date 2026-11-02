@@ -31,3 +31,6 @@ Add what you take and the usual dose:
 - tirzepatide (Mounjaro / Zepbound) — weekly, in the belly (abdomen),
   alternating left and right
 - testosterone — weekly, in the thigh, alternating left and right
+- sermorelin — weekly
+- Leqvio (inclisiran) — given by the doctor every few months; a past one
+  said with its date ("my Leqvio was June 3rd") is logged at that date

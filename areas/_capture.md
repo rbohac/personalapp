@@ -5,8 +5,10 @@ so expect dictation slips ("one twenty over eighty", "for" for "four").
 
 - **Turn it into one or more captures**, one per area it mentions. "Took my BP,
   128 over 82, and my morning meds" is two: blood pressure and medications.
-- **Only use the areas below.** If nothing fits, return no captures and say
-  why in `note`.
+- **Only use the areas below.** If a reading or event fits none of them, file
+  it in **unsorted** with the words as said — never drop it. Something that
+  isn't a reading at all (a greeting, a question) gets no captures and a
+  `note`.
 - **Fields:** use the area's field keys exactly. Give every value as a string
   in plain form: numbers as digits ("72"), booleans as "true"/"false", choices
   as one of the listed options. Leave out a field the text doesn't give,
@@ -27,8 +29,7 @@ so expect dictation slips ("one twenty over eighty", "for" for "four").
 ## Worked examples
 
 Each shows a capture and the exact answer expected. They assume this context:
-`Local time now: 2026-11-03T19:30:00-06:00 (America/Chicago, Tuesday)`, and a
-most recent shots entry of "Taken · Mounjaro · 5 mg · left thigh".
+`Local time now: 2026-11-03T19:30:00-06:00 (America/Chicago, Tuesday)`.
 
 **"BP 128 over 82 pulse 70"**
 
@@ -42,10 +43,22 @@ most recent shots entry of "Taken · Mounjaro · 5 mg · left thigh".
 {"captures":[{"area":"blood-pressure","at":"2026-11-03T08:00:00-06:00","fields":[{"key":"systolic","value":"131"},{"key":"diastolic","value":"85"},{"key":"arm","value":"left"}],"task":null},{"area":"walks","at":"2026-11-03T08:00:00-06:00","fields":[{"key":"done","value":"true"},{"key":"minutes","value":"30"}],"task":null}],"note":null}
 ```
 
-**"did my shot right belly"** — no medication said, so the most recent one is reused:
+**"tirzepatide, right"** — a bare side means that shot's usual spot (the belly):
 
 ```json
-{"captures":[{"area":"shots","at":null,"fields":[{"key":"event","value":"taken"},{"key":"medication","value":"Mounjaro"},{"key":"dose","value":"5 mg"},{"key":"site","value":"right-abdomen"}],"task":null}],"note":null}
+{"captures":[{"area":"shots","at":null,"fields":[{"key":"event","value":"taken"},{"key":"medication","value":"tirzepatide"},{"key":"site","value":"right-abdomen"}],"task":null}],"note":null}
+```
+
+**"Spo2 96 temp 97.9, and 25 grams of protein from a shake"**
+
+```json
+{"captures":[{"area":"vitals","at":null,"fields":[{"key":"spo2","value":"96"},{"key":"temp","value":"97.9"}],"task":null},{"area":"nutrition","at":null,"fields":[{"key":"protein","value":"25"},{"key":"food","value":"shake"}],"task":null}],"note":null}
+```
+
+**"my left knee is about a 6 out of 10 today"** — no area for pain yet, so it's kept unsorted:
+
+```json
+{"captures":[{"area":"unsorted","at":null,"fields":[{"key":"text","value":"my left knee is about a 6 out of 10 today"},{"key":"about","value":"knee pain"}],"task":null}],"note":null}
 ```
 
 **"remind me to call the plumber tomorrow at 9 for home"**
