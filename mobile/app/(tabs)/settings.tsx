@@ -6,7 +6,7 @@ import * as Notifications from "expo-notifications";
 
 import { useAuth } from "../../lib/auth";
 import { API_URL } from "../../lib/config";
-import { OUTCOME_LABEL, pushStatus, registerPush, testServerPush, type PushStatus } from "../../lib/push";
+import { OUTCOME_LABEL, pushHealth, pushStatus, registerPush, testServerPush, type PushStatus } from "../../lib/push";
 import { ensureNotificationPermission } from "../../lib/reminders";
 import { applyLatestUpdate, runningLabel, runtimeLabel } from "../../lib/updates";
 import { getRecognizerMode, getVocabulary, setRecognizerMode, type RecognizerMode } from "../../lib/vocabulary";
@@ -54,21 +54,20 @@ export default function SettingsScreen() {
     Alert.alert("Scheduled", "Lock your phone — it rings in 5 seconds.");
   }
 
-  async function connectPush() {
+  /** Register this phone, then have the server push to it 5 seconds later. */
+  async function setUpAndTest() {
+    setTesting(true);
     try {
       await registerPush();
-      setPushNote("Registered. The server can ring this phone.");
-      loadStatus();
     } catch (e) {
       setPushNote(e instanceof Error ? e.message : "Couldn't register.");
+      setTesting(false);
+      loadStatus();
+      return;
     }
-  }
-
-  async function serverTest() {
-    setTesting(true);
-    setPushNote("Sending from the server…");
+    setPushNote("Registered. Lock your phone — a push from the server arrives in about 5 seconds.");
     try {
-      const r = await testServerPush();
+      const r = await testServerPush(5);
       setPushNote(
         r.outcome === "delivered" ? "Delivered — it should be on your lock screen now."
         : `${OUTCOME_LABEL[r.outcome] ?? r.outcome}${r.detail ? `: ${r.detail}` : "."}`,
@@ -100,10 +99,15 @@ export default function SettingsScreen() {
       </Group>
 
       <Group c={c} title="Notifications">
-        <Button c={c} label="Send a test reminder" onPress={() => void testReminder()} />
-        <Button c={c} label="Register for server push" onPress={() => void connectPush()} />
-        <Button c={c} label={testing ? "Sending…" : "Send a test push from the server"} onPress={() => !testing && void serverTest()} />
+        <Line
+          c={c}
+          label="Server push"
+          value={status ? pushHealth(status).text : "Checking…"}
+          tone={status ? (pushHealth(status).ok === true ? "good" : pushHealth(status).ok === false ? "bad" : undefined) : undefined}
+        />
+        <Button c={c} label={testing ? "Testing…" : "Set up & test server push"} onPress={() => !testing && void setUpAndTest()} />
         {pushNote ? <Text style={[s.note, { color: c.muted }]}>{pushNote}</Text> : null}
+        <Button c={c} label="Send a test reminder (this phone only)" onPress={() => void testReminder()} />
         {status ? (
           <>
             <Line c={c} label="Server time zone" value={status.timeZone ?? "Not set yet"} />
@@ -174,11 +178,15 @@ function Group({ c, title, children }: { c: Palette; title: string; children: Re
   );
 }
 
-function Line({ c, label, value }: { c: Palette; label: string; value: string }) {
+function Line({ c, label, value, tone }: { c: Palette; label: string; value: string; tone?: "good" | "bad" }) {
   return (
     <View style={[s.line, { borderBottomColor: c.line }]}>
       <Text style={{ color: c.ink, fontSize: 16 }}>{label}</Text>
-      <Text style={{ color: c.muted, fontSize: 15, flexShrink: 1 }} numberOfLines={1}>
+      <Text
+        style={{ color: tone === "bad" ? c.danger : tone === "good" ? c.ink : c.muted, fontSize: 15, flexShrink: 1, fontWeight: tone ? "600" : "400" }}
+        numberOfLines={1}
+      >
+        {tone === "good" ? "✓ " : tone === "bad" ? "✗ " : ""}
         {value}
       </Text>
     </View>

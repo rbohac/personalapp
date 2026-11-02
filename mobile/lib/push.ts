@@ -48,9 +48,23 @@ export async function pushStatus() {
   return must(await api.GET("/devices/status", { params: { query: { installationId: await installationId() } } }));
 }
 
-/** A push from the server to this phone; waits for Apple's answer. */
-export async function testServerPush() {
-  return must(await api.POST("/devices/test"));
+/** A push from the server to this phone, after `delaySeconds` (time to lock it); waits for Apple's answer. */
+export async function testServerPush(delaySeconds = 0) {
+  return must(await api.POST("/devices/test", { body: { delaySeconds } }));
+}
+
+/**
+ * One line for "is server push working on this phone?", from the status:
+ * registered here or not, and what happened to the newest push.
+ */
+export function pushHealth(st: PushStatus): { ok: boolean | null; text: string } {
+  if (!st.devices.some((d) => d.thisPhone)) return { ok: false, text: "Not set up on this phone" };
+  const last = st.recent.find((p) => p.outcome !== "disabled");
+  const when = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+  if (!last) return { ok: null, text: "Registered · not tested yet" };
+  if (last.outcome === "delivered") return { ok: true, text: `Working · last delivered ${when(last.at)}` };
+  if (last.outcome === "sent") return { ok: null, text: `Sent ${when(last.at)} · waiting for Apple` };
+  return { ok: false, text: `Last push failed (${when(last.at)})` };
 }
 
 export const OUTCOME_LABEL: Record<string, string> = {
