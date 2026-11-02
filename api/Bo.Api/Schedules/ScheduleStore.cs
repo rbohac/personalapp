@@ -81,21 +81,72 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// a site in the rotation (a dose with no side said doesn't move it). The
     /// first in the list when none has.
     /// </summary>
-    internal static async Task<string?> NextSiteAsync(NpgsqlConnection conn, ScheduleRow s)
+    internal static async Task<string?> NextSiteAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow)
     {
         if (s.Rotation.Length == 0) return null;
-        var last = await conn.ExecuteScalarAsync<string?>(
+        var last = await LastFieldAsync(conn, s, "site", s.Rotation);
+        var i = last is null ? -1 : Array.IndexOf(s.Rotation, last);
+        var next = s.Rotation[(i + 1) % s.Rotation.Length];
+
+        // Paired with another shot (sermorelin with tirzepatide): on a day the
+        // other is given, take the opposite side to it. Its side today is the
+        // one logged today, or the one it's due on if it's due today.
+        if (s.OppositeOf is { } otherId && await GetAsync(conn, s.UserId, otherId) is { } other
+            && await DoneTodayAsync(conn, s, clock, utcNow) is null)
+        {
+            var today = clock.Today(utcNow);
+            var otherToday = await conn.ExecuteScalarAsync<string?>(
+                """
+                select data->>'site' from entries
+                where user_id = @user and area = @area and at >= @start
+                  and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
+                  and coalesce(data->>'event', 'taken') = 'taken'
+                order by at desc limit 1
+                """,
+                new { user = other.UserId, area = other.Area, match = Escape(other.MatchText), start = clock.StartOfToday(utcNow) });
+            if (otherToday is null && ScheduleLogic.Day(other.NextDue) is { } due && due <= today)
+                otherToday = await NextSiteAsync(conn, other, clock, utcNow);
+            if (ScheduleLogic.Side(otherToday) is { } taken
+                && s.Rotation.FirstOrDefault(r => ScheduleLogic.Side(r) is { } side && side != taken) is { } opposite)
+                return opposite;
+        }
+        return next;
+    }
+
+    /// <summary>The newest value of a field on this schedule's doses (limited to <paramref name="among"/> when given).</summary>
+    private static Task<string?> LastFieldAsync(NpgsqlConnection conn, ScheduleRow s, string field, string[]? among = null) =>
+        conn.ExecuteScalarAsync<string?>(
             """
-            select data->>'site' from entries
+            select data->>@field from entries
             where user_id = @user and area = @area
               and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
               and coalesce(data->>'event', 'taken') = 'taken'
-              and data->>'site' = any(@rotation)
+              and data->>@field is not null
+              and (@among::text[] is null or data->>@field = any(@among))
             order by at desc limit 1
             """,
-            new { user = s.UserId, area = s.Area, match = Escape(s.MatchText), rotation = s.Rotation });
-        var i = last is null ? -1 : Array.IndexOf(s.Rotation, last);
-        return s.Rotation[(i + 1) % s.Rotation.Length];
+            new { user = s.UserId, area = s.Area, match = Escape(s.MatchText), field, among });
+
+    private static async Task<DateTime?> DoneTodayAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow) =>
+        await LatestDoseAsync(conn, s, clock.StartOfToday(utcNow));
+
+    /// <summary>
+    /// The dose to take: whichever is newer of the last one logged (a
+    /// self-adjusted dose follows what you said) and the one set on the schedule.
+    /// </summary>
+    internal static async Task<string?> NextDoseAsync(NpgsqlConnection conn, ScheduleRow s)
+    {
+        var logged = await conn.QuerySingleOrDefaultAsync<(string Dose, DateTime At)?>(
+            """
+            select data->>'dose', at from entries
+            where user_id = @user and area = @area
+              and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
+              and coalesce(data->>'event', 'taken') = 'taken' and data->>'dose' is not null
+            order by at desc limit 1
+            """,
+            new { user = s.UserId, area = s.Area, match = Escape(s.MatchText) });
+        if (logged is not { } l) return s.Dose;
+        return s.Dose is not null && s.DoseSetAt is { } set && set > l.At ? s.Dose : l.Dose;
     }
 
     /// <summary>"left-thigh" → "left thigh".</summary>
@@ -164,7 +215,8 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             status = ScheduleLogic.StatusOf(s, clock, utcNow, doneToday);
         }
         return new ScheduleDto(s.Id, s.Title, s.Area, s.MatchText, s.EveryDays, ScheduleLogic.Hhmm(s.AtMinute), s.NextDue,
-            s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status, marks, s.Rotation, await NextSiteAsync(conn, s));
+            s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status, marks, s.Rotation,
+            await NextSiteAsync(conn, s, clock, utcNow), await NextDoseAsync(conn, s), s.Weekdays);
     }
 
     private sealed record MarkRow(string Item, string State, Guid? EntryId, DateTime? RemindAt);
@@ -266,8 +318,9 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         if (area is null) return $"No area \"{s.Area}\".";
         var raw = new Dictionary<string, string?> { ["medication"] = s.MatchText ?? s.Title };
         if (area.Fields.Any(f => f.Key == "event")) raw["event"] = "taken";
-        // Done on a rotating shot logs the side it was due on.
-        if (await NextSiteAsync(conn, s) is { } site) raw["site"] = site;
+        // Done on a rotating shot logs the side it was due on, and the dose.
+        if (await NextSiteAsync(conn, s, await ClockAsync(conn, s.UserId), utcNow) is { } site) raw["site"] = site;
+        if (area.Fields.Any(f => f.Key == "dose") && await NextDoseAsync(conn, s) is { } dose) raw["dose"] = dose;
         var (data, problems) = catalog.Validate(area, raw);
         if (problems.Count > 0) return string.Join(" ", problems);
         await conn.ExecuteAsync(

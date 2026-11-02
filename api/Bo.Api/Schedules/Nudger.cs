@@ -148,7 +148,13 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
 
         var lateNote = d.Status.State == "overdue" ? $"{d.Status.Label}. " : "";
         var body = lateNote + (items ?? (s.Daily ? "Due now." : "Due today."));
-        if (d.NextSite is { } site) body = $"{lateNote}{Cap(ScheduleStore.SiteLabel(site))} this time.{(items is null ? "" : " " + items)}";
+        if (d.NextSite is { } site)
+        {
+            var where = $"{ScheduleStore.SiteLabel(site)} this time.";
+            body = $"{lateNote}{(d.NextDose is { } dose ? $"{dose} · {where}" : Cap(where))}{(items is null ? "" : " " + items)}";
+        }
+        else if (d.NextDose is { } doseOnly)
+            body = $"{lateNote}{doseOnly}.{(items is null ? "" : " " + items)}";
         var category = Category;
         if (s.ByItem)
         {

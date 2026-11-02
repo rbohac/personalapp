@@ -37,6 +37,13 @@ internal static class ScheduleLogic
         var today = clock.Today(utcNow);
         if (s.Paused) return new("paused", null, 0, "Paused");
 
+        if (s.Daily && !s.OnDay(today))
+        {
+            var on = today.AddDays(1);
+            while (!s.OnDay(on)) on = on.AddDays(1);
+            return new("upcoming", clock.Utc(on, s.AtMinute), 0, $"Off today · next {(on.DayNumber - today.DayNumber == 1 ? "tomorrow" : DayName(on))}");
+        }
+
         if (s.Daily)
         {
             var dueAt = clock.Utc(today, s.AtMinute);
@@ -115,6 +122,10 @@ internal static class ScheduleLogic
         TimeOnly.TryParseExact(hhmm ?? "", "HH:mm", out var t) ? t.Hour * 60 + t.Minute : null;
 
     public static string Time(DateTime local) => local.ToString("h:mm tt", CultureInfo.InvariantCulture).ToLowerInvariant();
+
+    /// <summary>"left-abdomen" → "left"; null when a site has no side.</summary>
+    public static string? Side(string? site) =>
+        site?.StartsWith("left") == true ? "left" : site?.StartsWith("right") == true ? "right" : null;
 
     public static string DayName(DateOnly d) => d.ToString("dddd", CultureInfo.InvariantCulture);
 

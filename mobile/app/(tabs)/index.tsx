@@ -13,7 +13,7 @@ import { whenLabel } from "../../lib/dates";
 import { listGoals } from "../../lib/goals";
 import { listTasks } from "../../lib/tasks";
 import { onChanged } from "../../lib/events";
-import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, setItem, shortDate, siteLabel, weekday, type ItemState } from "../../lib/schedules";
+import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, nextDoseLabel, setItem, shortDate, weekday, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
 /**
@@ -175,7 +175,7 @@ export default function HomeScreen() {
               key={sch.id}
               c={c}
               icon="calendar-outline"
-              title={sch.title + (sch.nextSite ? ` · ${siteLabel(sch.nextSite)}` : "")}
+              title={sch.title + (nextDoseLabel(sch) ? ` · ${nextDoseLabel(sch)}` : "")}
               right={sch.status.label}
               onPress={() => router.push({ pathname: "/schedule/[id]", params: { id: sch.id } })}
             />
@@ -284,9 +284,9 @@ function Card({ c, sch, busy, onAct, onAskWhen }: { c: Palette; sch: Schedule; b
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={{ color: c.ink, fontSize: 17, fontWeight: "600", opacity: dimmed ? 0.75 : 1 }}>{sch.title}</Text>
           <Text style={{ color: c.muted, fontSize: 13 }}>{cadenceLabel(sch)}</Text>
-          {sch.nextSite ? (
+          {nextDoseLabel(sch) && st !== "done" ? (
             <Text style={{ color: st === "due" || st === "overdue" ? tone : c.ink, fontSize: 14, fontWeight: "500" }}>
-              Next: {siteLabel(sch.nextSite)}
+              Next: {nextDoseLabel(sch)}
             </Text>
           ) : null}
         </View>

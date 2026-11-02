@@ -6,6 +6,9 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import type { Area, ScheduleInput } from "../../lib/api";
 import { getAreas } from "../../lib/areas";
 import { createSchedule, deleteSchedule, inputOf, listSchedules, siteLabel, updateSchedule } from "../../lib/schedules";
+
+const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 import { usePalette, type Palette } from "../../lib/theme";
 
 const REPEATS = [
@@ -28,7 +31,7 @@ export default function ScheduleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === "new";
   const [form, setForm] = useState<ScheduleInput | null>(
-    isNew ? { title: "", area: "medications", everyDays: 1, at: "08:00", match: null, nextDue: isoDay(new Date()), items: [], paused: false, rotation: [] } : null,
+    isNew ? { title: "", area: "medications", everyDays: 1, at: "08:00", match: null, nextDue: isoDay(new Date()), items: [], paused: false, rotation: [], weekdays: [], dose: "" } : null,
   );
   const [itemsText, setItemsText] = useState("");
   const [areas, setAreas] = useState<Area[]>([]);
@@ -75,7 +78,9 @@ export default function ScheduleScreen() {
       match: form.match?.trim() || null,
       items: itemsText.split("\n").map((i) => i.trim()).filter(Boolean),
       nextDue: Number(form.everyDays) > 1 ? form.nextDue ?? isoDay(new Date()) : null,
-      rotation: Number(form.everyDays) > 1 ? form.rotation ?? [] : [],
+      rotation: form.rotation ?? [],
+      weekdays: Number(form.everyDays) === 1 ? (form.weekdays ?? []).map(Number) : [],
+      dose: (form.dose ?? "").trim(),
     };
     try {
       if (isNew) await createSchedule(body);
@@ -135,9 +140,30 @@ export default function ScheduleScreen() {
           <Chip key={r.days} c={c} label={r.label} on={every === r.days} onPress={() => set({ everyDays: r.days })} />
         ))}
       </View>
-      {every > 1 ? (
+      {every === 1 ? (
+        <View style={s.chips}>
+          {DAYS.map((d, i) => {
+            const days = (form.weekdays ?? []).map(Number);
+            const on = days.length === 0 || days.includes(i);
+            return (
+              <Pressable
+                key={i}
+                accessibilityLabel={DAY_NAMES[i]}
+                onPress={() => {
+                  const all = days.length === 0 ? [0, 1, 2, 3, 4, 5, 6] : days;
+                  const next = on ? all.filter((x) => x !== i) : [...all, i];
+                  set({ weekdays: next.length === 7 ? [] : next.sort((a, b) => a - b) });
+                }}
+                style={[s.day, { borderColor: on ? c.accent : c.line, backgroundColor: on ? c.accent : c.card }]}
+              >
+                <Text style={{ color: on ? c.accentInk : c.muted, fontSize: 15, fontWeight: "600" }}>{d}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
         <Text style={{ color: c.muted, fontSize: 13 }}>Counted from the last dose: a late one moves the next, and Today offers to keep the old day.</Text>
-      ) : null}
+      )}
 
       <View style={[s.pickRow, { borderColor: c.line, backgroundColor: c.card }]}>
         <Text style={{ color: c.ink, fontSize: 16 }}>Time</Text>
@@ -161,6 +187,16 @@ export default function ScheduleScreen() {
           />
         </View>
       ) : null}
+
+      <Label c={c} text="DOSE (OPTIONAL)" />
+      <TextInput
+        value={form.dose ?? ""}
+        onChangeText={(dose) => set({ dose })}
+        placeholder="e.g. 30 units"
+        placeholderTextColor={c.muted}
+        style={[s.field, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
+      />
+      <Text style={{ color: c.muted, fontSize: 13 }}>Logging a different dose (“tirzepatide 35 units”) updates this by itself.</Text>
 
       <Label c={c} text="WHAT TO TAKE (ONE PER LINE)" />
       <TextInput
@@ -191,7 +227,7 @@ export default function ScheduleScreen() {
         {form.match?.trim() ? `Any ${areaName(areas, form.area)} entry naming "${form.match.trim()}".` : `Any ${areaName(areas, form.area)} entry.`}
       </Text>
 
-      {sites.length > 0 && every > 1 ? (
+      {sites.length > 0 ? (
         <>
           <Label c={c} text="ALTERNATE SITES (TAP IN ORDER)" />
           <View style={s.chips}>
@@ -255,6 +291,7 @@ const s = StyleSheet.create({
   multi: { minHeight: 90, textAlignVertical: "top" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
+  day: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   pickRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 },
   delete: { marginTop: 24, borderWidth: 1, borderRadius: 12, paddingVertical: 13, alignItems: "center" },
 });

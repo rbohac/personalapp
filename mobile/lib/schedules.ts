@@ -97,6 +97,7 @@ export function inputOf(s: Schedule): ScheduleInput {
   return {
     title: s.title, area: s.area, everyDays: Number(s.everyDays), at: s.at,
     match: s.match, nextDue: s.nextDue, items: s.items, paused: s.paused, rotation: s.rotation,
+    weekdays: s.weekdays.map(Number), dose: s.nextDose ?? "",
   };
 }
 
@@ -125,10 +126,26 @@ export function timeLabel(hhmm: string): string {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-export function cadenceLabel(s: Pick<Schedule, "everyDays" | "at">): string {
+const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** [1,2,3,4,5] → "Mon–Fri"; [1,3,5] → "Mon, Wed, Fri". */
+export function daysLabel(days: number[]): string {
+  const d = [...days].sort((a, b) => a - b);
+  const run = d.length > 2 && d.every((x, i) => i === 0 || x === d[i - 1] + 1);
+  return run ? `${DAY[d[0]]}–${DAY[d[d.length - 1]]}` : d.map((x) => DAY[x]).join(", ");
+}
+
+export function cadenceLabel(s: Pick<Schedule, "everyDays" | "at"> & { weekdays?: (number | string)[] }): string {
   const n = Number(s.everyDays);
-  const every = n === 1 ? "Daily" : n === 7 ? "Weekly" : `Every ${n} days`;
+  const days = (s.weekdays ?? []).map(Number);
+  const every = n === 1 ? (days.length ? daysLabel(days) : "Daily") : n === 7 ? "Weekly" : `Every ${n} days`;
   return `${every} · ${timeLabel(s.at)}`;
+}
+
+/** "35 units · Left abdomen", from whichever of the two the schedule has. */
+export function nextDoseLabel(s: Pick<Schedule, "nextDose" | "nextSite">): string | null {
+  const parts = [s.nextDose, s.nextSite ? siteLabel(s.nextSite) : null].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 // Lock-screen buttons on schedule pushes. The server picks the category:
