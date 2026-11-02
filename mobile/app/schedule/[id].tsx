@@ -5,7 +5,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 
 import type { Area, ScheduleInput } from "../../lib/api";
 import { getAreas } from "../../lib/areas";
-import { createSchedule, deleteSchedule, inputOf, listSchedules, updateSchedule } from "../../lib/schedules";
+import { createSchedule, deleteSchedule, inputOf, listSchedules, siteLabel, updateSchedule } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
 const REPEATS = [
@@ -28,7 +28,7 @@ export default function ScheduleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === "new";
   const [form, setForm] = useState<ScheduleInput | null>(
-    isNew ? { title: "", area: "medications", everyDays: 1, at: "08:00", match: null, nextDue: isoDay(new Date()), items: [], paused: false } : null,
+    isNew ? { title: "", area: "medications", everyDays: 1, at: "08:00", match: null, nextDue: isoDay(new Date()), items: [], paused: false, rotation: [] } : null,
   );
   const [itemsText, setItemsText] = useState("");
   const [areas, setAreas] = useState<Area[]>([]);
@@ -61,6 +61,8 @@ export default function ScheduleScreen() {
   const set = (patch: Partial<ScheduleInput>) => setForm({ ...form, ...patch });
   const every = Number(form.everyDays);
   const [h, m] = form.at.split(":").map(Number);
+  // Sites this area can rotate through (shots), in the area's own order.
+  const sites = areas.find((a) => a.id === form.area)?.fields?.find((f) => f.key === "site")?.options?.filter((o) => o !== "other") ?? [];
   const atDate = new Date();
   atDate.setHours(h, m, 0, 0);
 
@@ -73,6 +75,7 @@ export default function ScheduleScreen() {
       match: form.match?.trim() || null,
       items: itemsText.split("\n").map((i) => i.trim()).filter(Boolean),
       nextDue: Number(form.everyDays) > 1 ? form.nextDue ?? isoDay(new Date()) : null,
+      rotation: Number(form.everyDays) > 1 ? form.rotation ?? [] : [],
     };
     try {
       if (isNew) await createSchedule(body);
@@ -172,7 +175,7 @@ export default function ScheduleScreen() {
       <Label c={c} text="COUNTS AS DONE WHEN YOU LOG" />
       <View style={s.chips}>
         {areas.map((a) => (
-          <Chip key={a.id} c={c} label={a.name} on={form.area === a.id} onPress={() => set({ area: a.id })} />
+          <Chip key={a.id} c={c} label={a.name} on={form.area === a.id} onPress={() => set({ area: a.id, rotation: [] })} />
         ))}
       </View>
       <TextInput
@@ -187,6 +190,34 @@ export default function ScheduleScreen() {
       <Text style={{ color: c.muted, fontSize: 13 }}>
         {form.match?.trim() ? `Any ${areaName(areas, form.area)} entry naming "${form.match.trim()}".` : `Any ${areaName(areas, form.area)} entry.`}
       </Text>
+
+      {sites.length > 0 && every > 1 ? (
+        <>
+          <Label c={c} text="ALTERNATE SITES (TAP IN ORDER)" />
+          <View style={s.chips}>
+            {sites.map((site) => {
+              const at = (form.rotation ?? []).indexOf(site);
+              return (
+                <Chip
+                  key={site}
+                  c={c}
+                  label={at >= 0 ? `${at + 1}. ${siteLabel(site)}` : siteLabel(site)}
+                  on={at >= 0}
+                  onPress={() => {
+                    const r = form.rotation ?? [];
+                    set({ rotation: at >= 0 ? r.filter((x) => x !== site) : [...r, site] });
+                  }}
+                />
+              );
+            })}
+          </View>
+          <Text style={{ color: c.muted, fontSize: 13 }}>
+            {(form.rotation ?? []).length > 1
+              ? "Each reminder names the site after the one you last logged. Saying just “left” or “right” is enough."
+              : "Pick two or more to alternate."}
+          </Text>
+        </>
+      ) : null}
 
       <View style={[s.pickRow, { borderColor: c.line, backgroundColor: c.card }]}>
         <Text style={{ color: c.ink, fontSize: 16 }}>Paused</Text>

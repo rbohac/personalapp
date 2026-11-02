@@ -96,8 +96,14 @@ export async function acceptDay(id: string): Promise<Schedule> {
 export function inputOf(s: Schedule): ScheduleInput {
   return {
     title: s.title, area: s.area, everyDays: Number(s.everyDays), at: s.at,
-    match: s.match, nextDue: s.nextDue, items: s.items, paused: s.paused,
+    match: s.match, nextDue: s.nextDue, items: s.items, paused: s.paused, rotation: s.rotation,
   };
+}
+
+/** "left-thigh" → "Left thigh". */
+export function siteLabel(site: string): string {
+  const t = site.replace(/-/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 /** yyyy-MM-dd as a weekday name: "Monday". */

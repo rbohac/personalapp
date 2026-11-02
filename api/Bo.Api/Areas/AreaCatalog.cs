@@ -82,6 +82,15 @@ public sealed class AreaCatalog
         return [.. list];
     }
 
+    /// <summary>A rotation must be sites the area's site field offers. Null when fine.</summary>
+    public static string? RotationProblem(AreaDefinition area, string[] rotation)
+    {
+        if (rotation.Length == 0) return null;
+        var site = area.Fields.FirstOrDefault(f => f.Key == "site");
+        if (site?.Options is not { } options) return $"{area.Name} has no sites to rotate.";
+        return rotation.FirstOrDefault(r => !options.Contains(r)) is { } bad ? $"\"{bad}\" isn't a site ({string.Join(", ", options)})." : null;
+    }
+
     /// <summary>What's wrong with a goal's definition against its area, in words, or null.</summary>
     public static string? GoalProblem(AreaDefinition? area, string measure, string? field, decimal target, string? excludeField)
     {
@@ -104,6 +113,7 @@ public sealed class AreaCatalog
             if (areas.FirstOrDefault(a => a.Id == s.Area) is not { Kind: "log" }) throw new InvalidOperationException($"{file}: \"{s.Title}\" names no log area \"{s.Area}\".");
             if (s.EveryDays is < 1 or > 365) throw new InvalidOperationException($"{file}: \"{s.Title}\" everyDays must be 1–365.");
             if (!TimeOnly.TryParseExact(s.At, "HH:mm", out _)) throw new InvalidOperationException($"{file}: \"{s.Title}\" at must be HH:mm.");
+            if (RotationProblem(areas.First(a => a.Id == s.Area), s.Rotation) is { } p) throw new InvalidOperationException($"{file}: \"{s.Title}\": {p}");
         }
         return [.. list];
     }
