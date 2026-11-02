@@ -26,6 +26,8 @@ export default function EntryScreen() {
   const [at, setAt] = useState<string>(new Date().toISOString());
   const [picking, setPicking] = useState(false);
   const [saving, setSaving] = useState(false);
+  // What was loaded, to tell a look from an edit: Close until something changes.
+  const [loaded, setLoaded] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -41,8 +43,10 @@ export default function EntryScreen() {
           const a = await getArea(e.area);
           if (!a) throw new Error(`The area "${e.area}" no longer exists.`);
           setArea(a);
-          setValues(toValues(a, e.data, false));
+          const v = toValues(a, e.data, false);
+          setValues(v);
           setAt(e.at);
+          setLoaded(JSON.stringify({ v, at: e.at }));
         }
       } catch (e) {
         Alert.alert("Couldn't open entry", e instanceof Error ? e.message : "");
@@ -100,16 +104,30 @@ export default function EntryScreen() {
     );
   }
 
+  // A new entry is always a change; an existing one only once something differs from what was loaded.
+  const changed = isNew || loaded !== JSON.stringify({ v: values, at });
+
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
           title: area.name,
-          headerRight: () => (
-            <Pressable onPress={save} disabled={saving}>
-              <Text style={{ color: c.accent, fontSize: 17, fontWeight: "600", opacity: saving ? 0.4 : 1 }}>Save</Text>
-            </Pressable>
-          ),
+          headerLeft: () =>
+            changed ? (
+              <Pressable onPress={() => router.back()} hitSlop={10}>
+                <Text style={{ color: c.muted, fontSize: 17 }}>Cancel</Text>
+              </Pressable>
+            ) : null,
+          headerRight: () =>
+            changed ? (
+              <Pressable onPress={save} disabled={saving} hitSlop={10}>
+                <Text style={{ color: c.accent, fontSize: 17, fontWeight: "600", opacity: saving ? 0.4 : 1 }}>Save</Text>
+              </Pressable>
+            ) : (
+              <Pressable onPress={() => router.back()} hitSlop={10}>
+                <Text style={{ color: c.accent, fontSize: 17, fontWeight: "600" }}>Close</Text>
+              </Pressable>
+            ),
         }}
       />
 
