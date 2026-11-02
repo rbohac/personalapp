@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActionSheetIOS, Alert, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, Tabs, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -56,6 +56,11 @@ export default function TodayScreen() {
   useEffect(() => onChanged("schedules", () => void load()), [load]);
   useEffect(() => onChanged("entries", () => void load()), [load]);
   useEffect(() => onChanged("goals", () => void load()), [load]);
+  // Coming back to the app is not a focus change; refetch so "Due at 8" doesn't linger past 8.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (st) => st === "active" && void load());
+    return () => sub.remove();
+  }, [load]);
 
   function add() {
     ActionSheetIOS.showActionSheetWithOptions({ options: ["New schedule", "New weekly goal", "Cancel"], cancelButtonIndex: 2 }, (i) => {

@@ -241,3 +241,19 @@ Supersedes the model line of "Areas and capture" above.
   "Next: …", and Done from the app or the push logs the side that was due.
 - Migration 0008 adds `schedules.rotation` and sets it on the two starter
   shot schedules.
+
+## 2026-11-02 — Push is visible from the phone
+
+- The first 8 AM nudge didn't arrive and nothing could say why. Every server
+  push now writes a `push_log` row (migration 0009) with what happened:
+  no phone registered, Expo refused it, sent, then delivered or failed once
+  Expo's receipt says what Apple did (bad credentials only show up there).
+  The nudger checks receipts every run; rows are kept 30 days.
+- Settings › Notifications shows the time zone the server uses, the phones
+  registered (and whether this one is), the recent pushes with their
+  outcome, and **Send a test push from the server**, which waits for the
+  receipt and reports it.
+- The nudger no longer skips people with no phone registered: it attempts,
+  and the log says "No phone registered" instead of saying nothing.
+- Today refetches when the app comes back to the front; a screen loaded at
+  7:50 no longer reads "Due at 8:00" at 9:10.

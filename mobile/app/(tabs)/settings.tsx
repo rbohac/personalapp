@@ -6,7 +6,7 @@ import * as Notifications from "expo-notifications";
 
 import { useAuth } from "../../lib/auth";
 import { API_URL } from "../../lib/config";
-import { registerPush } from "../../lib/push";
+import { OUTCOME_LABEL, pushStatus, registerPush, testServerPush, type PushStatus } from "../../lib/push";
 import { ensureNotificationPermission } from "../../lib/reminders";
 import { applyLatestUpdate, runningLabel, runtimeLabel } from "../../lib/updates";
 import { getRecognizerMode, getVocabulary, setRecognizerMode, type RecognizerMode } from "../../lib/vocabulary";
@@ -16,6 +16,11 @@ export default function SettingsScreen() {
   const c = usePalette();
   const { state, signOut } = useAuth();
   const [pushNote, setPushNote] = useState<string | null>(null);
+  const [status, setStatus] = useState<PushStatus | null>(null);
+  const [testing, setTesting] = useState(false);
+  const loadStatus = useCallback(() => {
+    pushStatus().then(setStatus, () => setStatus(null));
+  }, []);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
   const [mode, setMode] = useState<RecognizerMode>("phone");
   const [wordCount, setWordCount] = useState<number | null>(null);
@@ -23,6 +28,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     void getRecognizerMode().then(setMode);
   }, []);
+  useFocusEffect(useCallback(() => loadStatus(), [loadStatus]));
   useFocusEffect(
     useCallback(() => {
       getVocabulary().then((v) => setWordCount(v.length), () => setWordCount(null));
@@ -52,8 +58,26 @@ export default function SettingsScreen() {
     try {
       await registerPush();
       setPushNote("Registered. The server can ring this phone.");
+      loadStatus();
     } catch (e) {
       setPushNote(e instanceof Error ? e.message : "Couldn't register.");
+    }
+  }
+
+  async function serverTest() {
+    setTesting(true);
+    setPushNote("Sending from the server…");
+    try {
+      const r = await testServerPush();
+      setPushNote(
+        r.outcome === "delivered" ? "Delivered — it should be on your lock screen now."
+        : `${OUTCOME_LABEL[r.outcome] ?? r.outcome}${r.detail ? `: ${r.detail}` : "."}`,
+      );
+    } catch (e) {
+      setPushNote(e instanceof Error ? e.message : "Couldn't reach the server.");
+    } finally {
+      setTesting(false);
+      loadStatus();
     }
   }
 
@@ -78,7 +102,37 @@ export default function SettingsScreen() {
       <Group c={c} title="Notifications">
         <Button c={c} label="Send a test reminder" onPress={() => void testReminder()} />
         <Button c={c} label="Register for server push" onPress={() => void connectPush()} />
+        <Button c={c} label={testing ? "Sending…" : "Send a test push from the server"} onPress={() => !testing && void serverTest()} />
         {pushNote ? <Text style={[s.note, { color: c.muted }]}>{pushNote}</Text> : null}
+        {status ? (
+          <>
+            <Line c={c} label="Server time zone" value={status.timeZone ?? "Not set yet"} />
+            <Line
+              c={c}
+              label="Phones registered"
+              value={status.devices.length === 0 ? "None" : `${status.devices.length}${status.devices.some((d) => d.thisPhone) ? " (incl. this one)" : " (not this one)"}`}
+            />
+            <Text style={[s.note, { color: c.muted, paddingBottom: 4 }]}>RECENT PUSHES</Text>
+            {status.recent.length === 0 ? (
+              <Text style={[s.note, { color: c.muted, paddingTop: 0 }]}>None yet.</Text>
+            ) : (
+              status.recent.slice(0, 6).map((p, i) => (
+                <View key={i} style={[s.push, { borderBottomColor: c.line }]}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+                    <Text style={{ color: c.ink, fontSize: 14, flexShrink: 1 }} numberOfLines={1}>{p.title}</Text>
+                    <Text style={{ color: p.outcome === "failed" || p.outcome === "no-devices" ? c.danger : c.muted, fontSize: 13 }}>
+                      {OUTCOME_LABEL[p.outcome] ?? p.outcome}
+                    </Text>
+                  </View>
+                  <Text style={{ color: c.muted, fontSize: 12 }}>
+                    {new Date(p.at).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}
+                    {p.detail ? ` · ${p.detail}` : ""}
+                  </Text>
+                </View>
+              ))
+            )}
+          </>
+        ) : null}
       </Group>
 
       <Group c={c} title="Voice">
@@ -146,4 +200,5 @@ const s = StyleSheet.create({
   card: { borderRadius: 12, borderWidth: 1, overflow: "hidden" },
   line: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth },
   note: { padding: 14, fontSize: 14 },
+  push: { paddingHorizontal: 14, paddingVertical: 8, gap: 2, borderBottomWidth: StyleSheet.hairlineWidth },
 });
