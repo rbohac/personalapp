@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { router, Tabs, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { router, Tabs, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import type { Schedule } from "../../lib/api";
+import { useRemindPicker } from "../../components/RemindPicker";
+import type { ItemMark, Schedule } from "../../lib/api";
 import { onChanged } from "../../lib/events";
-import { acceptDay, cadenceLabel, keepDay, listSchedules, markDone, shortDate, weekday } from "../../lib/schedules";
+import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, setItem, shortDate, weekday, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
 /** What's due: each schedule with where it stands, the list of what to take, and Done. */
@@ -15,6 +16,25 @@ export default function TodayScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Set from a push ("Not taken yet…"): ask when to remind about what's left.
+  const { ask: askParam } = useLocalSearchParams<{ ask?: string }>();
+  // A ref, not state: the sheet's callback runs before a re-render would land.
+  const remindFor = useRef<{ id: string; items: string[] } | null>(null);
+  const remind = useRemindPicker(c, (at) => {
+    const target = remindFor.current;
+    if (!target) return;
+    void act(target.id, async (id) => {
+      let last: Schedule | null = null;
+      for (const item of target.items) last = await setItem(id, item, "later", at);
+      return last!;
+    });
+  });
+
+  function askWhen(id: string, items: string[]) {
+    if (items.length === 0) return;
+    remindFor.current = { id, items };
+    remind.ask(items.length === 1 ? `Remind me to take ${itemName(items[0])}` : `Remind me about ${items.length} items`);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -31,6 +51,16 @@ export default function TodayScreen() {
   useFocusEffect(useCallback(() => void load(), [load]));
   useEffect(() => onChanged("schedules", () => void load()), [load]);
   useEffect(() => onChanged("entries", () => void load()), [load]);
+
+  // Arriving from a "not taken yet" push: ask once the list has loaded.
+  const [asked, setAsked] = useState<string | null>(null);
+  useEffect(() => {
+    if (!askParam || asked === askParam) return;
+    const sch = schedules.find((x) => x.id === askParam);
+    if (!sch) return;
+    setAsked(askParam);
+    askWhen(sch.id, sch.today.filter((m) => m.state === "open").map((m) => m.item));
+  }, [askParam, schedules]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function act(id: string, fn: (id: string) => Promise<Schedule>) {
     setBusy(id);
@@ -67,14 +97,18 @@ export default function TodayScreen() {
         <Text style={{ color: c.muted, fontSize: 15 }}>No schedules yet. Tap + to add one.</Text>
       ) : null}
       {sorted.map((sch) => (
-        <Card key={sch.id} c={c} sch={sch} busy={busy === sch.id} onAct={act} />
+        <Card key={sch.id} c={c} sch={sch} busy={busy === sch.id} onAct={act} onAskWhen={askWhen} />
       ))}
+      {remind.picker}
     </ScrollView>
   );
 }
 
-function Card({ c, sch, busy, onAct }: { c: Palette; sch: Schedule; busy: boolean; onAct: (id: string, fn: (id: string) => Promise<Schedule>) => void }) {
+type Act = (id: string, fn: (id: string) => Promise<Schedule>) => void;
+
+function Card({ c, sch, busy, onAct, onAskWhen }: { c: Palette; sch: Schedule; busy: boolean; onAct: Act; onAskWhen: (id: string, items: string[]) => void }) {
   const st = sch.status.state;
+  const byItem = sch.today.length > 0;
   const tone = st === "overdue" ? c.danger : st === "due" ? c.accent : st === "done" ? c.muted : c.ink;
   const canDone = st !== "done" && st !== "paused";
   const dimmed = st === "done" || st === "paused" || st === "upcoming";
@@ -95,7 +129,9 @@ function Card({ c, sch, busy, onAct }: { c: Palette; sch: Schedule; busy: boolea
         </View>
       </View>
 
-      {sch.items.length > 0 && !dimmed ? (
+      {byItem ? (
+        <ItemChips c={c} sch={sch} onAct={onAct} onAskWhen={onAskWhen} />
+      ) : sch.items.length > 0 && !dimmed ? (
         <View style={{ gap: 3 }}>
           {sch.items.map((i) => (
             <Text key={i} style={{ color: c.ink, fontSize: 15 }}>
@@ -125,12 +161,73 @@ function Card({ c, sch, busy, onAct }: { c: Palette; sch: Schedule; busy: boolea
             style={[s.done, { backgroundColor: st === "upcoming" || st === "later" ? c.bg : c.accent, borderColor: c.accent, opacity: busy ? 0.5 : 1 }]}
           >
             <Text style={{ color: st === "upcoming" || st === "later" ? c.accent : c.accentInk, fontSize: 15, fontWeight: "600" }}>
-              {st === "upcoming" ? "Log it now" : "Done"}
+              {st === "upcoming" ? "Log it now" : byItem ? "Took all" : "Done"}
             </Text>
           </Pressable>
+          {byItem && sch.today.some((m) => m.state === "open") ? (
+            <Pressable
+              onPress={() => onAskWhen(sch.id, sch.today.filter((m) => m.state === "open").map((m) => m.item))}
+              style={[s.done, { borderColor: c.line }]}
+            >
+              <Text style={{ color: c.ink, fontSize: 15 }}>Remind me later</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
     </Pressable>
+  );
+}
+
+/**
+ * A daily list as buttons: tap to tick taken (tap again to untick); hold for
+ * skip today or remind me later. Colour says the state at a glance.
+ */
+function ItemChips({ c, sch, onAct, onAskWhen }: { c: Palette; sch: Schedule; onAct: Act; onAskWhen: (id: string, items: string[]) => void }) {
+  const set = (m: ItemMark, state: ItemState) => onAct(sch.id, (id) => setItem(id, m.item, state));
+
+  function tap(m: ItemMark) {
+    if (m.state === "taken") {
+      if (m.byEntry) Alert.alert("Logged already", `An entry you logged today names ${itemName(m.item)}. Delete it on the Log screen to untick.`);
+      else set(m, "open");
+    } else set(m, "taken");
+  }
+
+  function hold(m: ItemMark) {
+    const options = ["Taken", "Skip today", "Remind me later…", ...(m.state !== "open" && !m.byEntry ? ["Not yet (untick)"] : []), "Cancel"];
+    ActionSheetIOS.showActionSheetWithOptions({ title: m.item, options, cancelButtonIndex: options.length - 1 }, (i) => {
+      const pick = options[i];
+      if (pick === "Taken") set(m, "taken");
+      else if (pick === "Skip today") set(m, "skipped");
+      else if (pick === "Remind me later…") onAskWhen(sch.id, [m.item]);
+      else if (pick === "Not yet (untick)") set(m, "open");
+    });
+  }
+
+  return (
+    <View style={s.chips}>
+      {sch.today.map((m) => {
+        const look =
+          m.state === "taken" ? { bg: c.accent, border: c.accent, ink: c.accentInk, icon: "checkmark" as const }
+          : m.state === "skipped" ? { bg: c.bg, border: c.line, ink: c.muted, icon: "remove" as const }
+          : m.state === "later" ? { bg: c.bg, border: c.late, ink: c.late, icon: "time-outline" as const }
+          : { bg: c.card, border: c.accent, ink: c.ink, icon: null };
+        return (
+          <Pressable
+            key={m.item}
+            onPress={() => tap(m)}
+            onLongPress={() => hold(m)}
+            delayLongPress={350}
+            style={({ pressed }) => [s.chip, { backgroundColor: look.bg, borderColor: look.border, opacity: pressed ? 0.6 : 1 }]}
+          >
+            {look.icon ? <Ionicons name={look.icon} size={16} color={look.ink} /> : null}
+            <Text style={{ color: look.ink, fontSize: 15, fontWeight: m.state === "taken" ? "600" : "400", textDecorationLine: m.state === "skipped" ? "line-through" : "none" }}>
+              {m.item}
+              {m.state === "later" && m.remindAt ? ` · ${new Date(m.remindAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}` : ""}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -150,4 +247,6 @@ const s = StyleSheet.create({
   banner: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 8 },
   small: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   done: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
 });

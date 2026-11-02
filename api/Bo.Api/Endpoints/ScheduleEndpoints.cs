@@ -23,6 +23,7 @@ public static class ScheduleEndpoints
         g.MapDelete("/{id:guid}", Delete);
         g.MapPost("/{id:guid}/done", Done);
         g.MapPost("/{id:guid}/snooze", Snooze);
+        g.MapPost("/{id:guid}/items", SetItem);
         g.MapPost("/{id:guid}/keep-day", KeepDay);
         g.MapPost("/{id:guid}/accept-day", AcceptDay);
 
@@ -107,6 +108,18 @@ public static class ScheduleEndpoints
         var now = time.GetUtcNow().UtcDateTime;
         if (await store.LogDoseAsync(conn, s, now) is { } problem) return Invalid(problem);
         return TypedResults.Ok(await Fresh(conn, user, id, await ScheduleStore.ClockAsync(conn, user), now));
+    }
+
+    /// <summary>Tick one item of a daily list: taken, open (untick), skipped, or later with a time to remind.</summary>
+    private static async Task<Results<Ok<ScheduleDto>, NotFound, ValidationProblem>> SetItem(Guid id, ItemInput body, HttpContext http, ScheduleStore store, TimeProvider time)
+    {
+        var user = http.User.UserId();
+        await using var conn = await store.Db.OpenAsync();
+        if (await ScheduleStore.GetAsync(conn, user, id) is not { } s) return TypedResults.NotFound();
+        var clock = await ScheduleStore.ClockAsync(conn, user);
+        var now = time.GetUtcNow().UtcDateTime;
+        if (await store.SetItemAsync(conn, s, body.Item, body.State, body.RemindAt?.UtcDateTime, clock, now) is { } problem) return Invalid(problem);
+        return TypedResults.Ok(await Fresh(conn, user, id, clock, now));
     }
 
     /// <summary>Put today's nudge off for a while (default an hour). Nudges only; it's still due.</summary>

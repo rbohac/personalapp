@@ -12,7 +12,7 @@ import { ensureNotificationPermission, registerReminderCategory, reminderActionO
 import { getTask, inputOf, setDone, updateTask } from "../lib/tasks";
 import { usePalette } from "../lib/theme";
 import { applyLatestUpdate } from "../lib/updates";
-import { markDone, registerScheduleCategory, reportTimeZone, scheduleActionOf, snooze } from "../lib/schedules";
+import { markDone, registerScheduleCategory, reportTimeZone, scheduleActionOf, setItem, snooze } from "../lib/schedules";
 
 export default function RootLayout() {
   // New code arrives over the air; apply it on this launch instead of the next.
@@ -29,12 +29,19 @@ export default function RootLayout() {
   );
 }
 
-/** Act on a tapped schedule nudge: Done logs it, In 1 hour snoozes, a tap opens Today. */
+/**
+ * Act on a tapped schedule push. Done (Took all / Took it) logs it; In 1 hour
+ * snoozes (or re-times a put-off item); a plain tap opens Today — asking when
+ * to be reminded about what's left, when the push was about that.
+ */
 async function followSchedule(a: NonNullable<ReturnType<typeof scheduleActionOf>>) {
   try {
-    if (a.action === "done") await markDone(a.scheduleId);
+    if (a.item) {
+      if (a.action === "done") await setItem(a.scheduleId, a.item, "taken");
+      else if (a.action === "later") await setItem(a.scheduleId, a.item, "later", new Date(Date.now() + 60 * 60 * 1000));
+    } else if (a.action === "done") await markDone(a.scheduleId);
     else if (a.action === "later") await snooze(a.scheduleId, 60);
-    router.navigate("/today");
+    router.navigate(a.action === "open" && a.ask ? { pathname: "/today", params: { ask: a.scheduleId } } : "/today");
   } catch (e) {
     Alert.alert("Not updated", e instanceof Error ? e.message : "The server didn't take it.");
   }

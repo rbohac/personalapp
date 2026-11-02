@@ -118,10 +118,101 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     internal static async Task<ScheduleDto> DtoAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow)
     {
         var last = await LatestDoseAsync(conn, s);
-        var doneToday = s.Daily && last is { } l && l >= clock.StartOfToday(utcNow) ? last : null;
-        var status = ScheduleLogic.StatusOf(s, clock, utcNow, doneToday);
+        ItemMark[] marks = [];
+        ScheduleStatus status;
+        if (s.ByItem)
+        {
+            marks = await MarksAsync(conn, s, clock, utcNow);
+            status = ScheduleLogic.StatusOfList(s, clock, utcNow, marks);
+        }
+        else
+        {
+            var doneToday = s.Daily && last is { } l && l >= clock.StartOfToday(utcNow) ? last : null;
+            status = ScheduleLogic.StatusOf(s, clock, utcNow, doneToday);
+        }
         return new ScheduleDto(s.Id, s.Title, s.Area, s.MatchText, s.EveryDays, ScheduleLogic.Hhmm(s.AtMinute), s.NextDue,
-            s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status);
+            s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status, marks);
+    }
+
+    private sealed record MarkRow(string Item, string State, Guid? EntryId, DateTime? RemindAt);
+
+    /// <summary>
+    /// Today's state of each item on a daily list: its tick if it has one;
+    /// otherwise taken if an entry logged today names it (or names the whole
+    /// list, "took my morning meds"); otherwise still open.
+    /// </summary>
+    internal static async Task<ItemMark[]> MarksAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow)
+    {
+        var rows = (await conn.QueryAsync<MarkRow>(
+            "select item, state, entry_id as entryid, remind_at as remindat from schedule_marks where schedule_id = @id and day = @day::date",
+            new { s.Id, day = ScheduleLogic.Iso(clock.Today(utcNow)) })).ToDictionary(r => r.Item);
+        var linked = rows.Values.Where(r => r.EntryId is not null).Select(r => r.EntryId!.Value).ToHashSet();
+        var said = (await conn.QueryAsync<(Guid Id, string? Medication)>(
+            """
+            select id, data->>'medication' from entries
+            where user_id = @user and area = @area and at >= @start and coalesce(data->>'event', 'taken') = 'taken'
+            """,
+            new { user = s.UserId, area = s.Area, start = clock.StartOfToday(utcNow) }))
+            .Where(e => !linked.Contains(e.Id)).Select(e => e.Medication).ToList();
+        var wholeList = s.MatchText is { Length: > 0 } m && said.Any(x => x?.Contains(m, StringComparison.OrdinalIgnoreCase) == true);
+
+        return s.Items.Select(item =>
+            rows.TryGetValue(item, out var r) ? new ItemMark(item, r.State, r.RemindAt, false)
+            : wholeList || said.Any(x => ScheduleLogic.Names(x, item)) ? new ItemMark(item, "taken", null, true)
+            : new ItemMark(item, "open", null, false)).ToArray();
+    }
+
+    /// <summary>
+    /// Tick one item of a daily list. Taken logs an entry for it (and
+    /// unticking removes that entry); skipped and later log nothing. Returns a
+    /// problem in words, or null.
+    /// </summary>
+    internal async Task<string?> SetItemAsync(NpgsqlConnection conn, ScheduleRow s, string item, string state, DateTime? remindAt, Clock clock, DateTime utcNow)
+    {
+        if (!s.ByItem || !s.Items.Contains(item)) return $"\"{item}\" isn't on this list.";
+        if (state is not ("taken" or "open" or "skipped" or "later")) return "State is taken, open, skipped or later.";
+        if (state == "later" && (remindAt is null || remindAt <= utcNow)) return "Pick a time later than now.";
+        var day = ScheduleLogic.Iso(clock.Today(utcNow));
+
+        await using var tx = await conn.BeginTransactionAsync();
+        var existing = await conn.QuerySingleOrDefaultAsync<MarkRow>(
+            "select item, state, entry_id as entryid, remind_at as remindat from schedule_marks where schedule_id = @id and day = @day::date and item = @item",
+            new { s.Id, day, item }, tx);
+        if (existing?.State == "taken" && state == "taken") { await tx.CommitAsync(); return null; }
+        if (existing?.EntryId is { } old)
+            await conn.ExecuteAsync("delete from entries where id = @old and user_id = @user", new { old, user = s.UserId }, tx);
+
+        if (state == "open")
+        {
+            await conn.ExecuteAsync("delete from schedule_marks where schedule_id = @id and day = @day::date and item = @item", new { s.Id, day, item }, tx);
+            await tx.CommitAsync();
+            return null;
+        }
+
+        Guid? entryId = null;
+        if (state == "taken")
+        {
+            var area = catalog.Find(s.Area);
+            if (area is null) return $"No area \"{s.Area}\".";
+            var raw = new Dictionary<string, string?> { ["medication"] = ScheduleLogic.Name(item) };
+            if (area.Fields.Any(f => f.Key == "event")) raw["event"] = "taken";
+            var (data, problems) = catalog.Validate(area, raw);
+            if (problems.Count > 0) return string.Join(" ", problems);
+            entryId = await conn.ExecuteScalarAsync<Guid>(
+                "insert into entries (user_id, area, at, data, source, raw) values (@user, @area, @at, @data::jsonb, 'manual', @raw) returning id",
+                new { user = s.UserId, area = s.Area, at = utcNow, data = JsonSerializer.Serialize(data), raw = $"Ticked: {item}" }, tx);
+        }
+        await conn.ExecuteAsync(
+            """
+            insert into schedule_marks (schedule_id, day, item, state, entry_id, remind_at)
+            values (@id, @day::date, @item, @state, @entryId, @remindAt)
+            on conflict (schedule_id, day, item) do update
+              set state = excluded.state, entry_id = excluded.entry_id, remind_at = excluded.remind_at,
+                  reminded_at = null, updated_at = now()
+            """,
+            new { s.Id, day, item, state, entryId, remindAt = state == "later" ? remindAt : null }, tx);
+        await tx.CommitAsync();
+        return null;
     }
 
     /// <summary>
@@ -130,6 +221,14 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// </summary>
     internal async Task<string?> LogDoseAsync(NpgsqlConnection conn, ScheduleRow s, DateTime utcNow)
     {
+        // A list: "Took all" ticks every item still open, one entry each.
+        if (s.ByItem)
+        {
+            var clock = await ClockAsync(conn, s.UserId);
+            foreach (var m in await MarksAsync(conn, s, clock, utcNow))
+                if (m.State is "open" or "later" && await SetItemAsync(conn, s, m.Item, "taken", null, clock, utcNow) is { } p) return p;
+            return null;
+        }
         var area = catalog.Find(s.Area);
         if (area is null) return $"No area \"{s.Area}\".";
         var raw = new Dictionary<string, string?> { ["medication"] = s.MatchText ?? s.Title };

@@ -59,6 +59,26 @@ export async function snooze(id: string, minutes = 60): Promise<Schedule> {
   return s;
 }
 
+export type ItemState = "taken" | "open" | "skipped" | "later";
+
+/** Tick one item of a daily list. "later" needs the time to be reminded. */
+export async function setItem(id: string, item: string, state: ItemState, remindAt?: Date): Promise<Schedule> {
+  const s = must(
+    await api.POST("/schedules/{id}/items", {
+      params: { path: { id } },
+      body: { item, state, remindAt: remindAt?.toISOString() ?? null },
+    }),
+  );
+  edited(true);
+  return s;
+}
+
+/** An item as a medication name: the text before any "(note)". Matches the server. */
+export function itemName(item: string): string {
+  const i = item.indexOf("(");
+  return (i > 0 ? item.slice(0, i) : item).trim() || item.trim();
+}
+
 /** A dose moved the cadence: go back to the planned day. */
 export async function keepDay(id: string): Promise<Schedule> {
   const s = must(await api.POST("/schedules/{id}/keep-day", { params: { path: { id } } }));
@@ -105,25 +125,41 @@ export function cadenceLabel(s: Pick<Schedule, "everyDays" | "at">): string {
   return `${every} · ${timeLabel(s.at)}`;
 }
 
-// Lock-screen buttons on a schedule nudge (the server sends categoryId
-// "bo.schedule"). They open the app to act, like the task reminders.
-export const SCHEDULE_CATEGORY = "bo.schedule";
+// Lock-screen buttons on schedule pushes. The server picks the category:
+// bo.schedule (Done), bo.schedule.list (Took all, for a daily list), bo.item
+// (one put-off item). They open the app to act, like the task reminders.
 const DONE = "bo.schedule.done";
 const LATER = "bo.schedule.later";
 
 export async function registerScheduleCategory(): Promise<void> {
-  await Notifications.setNotificationCategoryAsync(SCHEDULE_CATEGORY, [
-    { identifier: DONE, buttonTitle: "Done", options: { opensAppToForeground: true } },
-    { identifier: LATER, buttonTitle: "In 1 hour", options: { opensAppToForeground: true } },
+  const later = { identifier: LATER, buttonTitle: "In 1 hour", options: { opensAppToForeground: true } };
+  await Notifications.setNotificationCategoryAsync("bo.schedule", [
+    { identifier: DONE, buttonTitle: "Done", options: { opensAppToForeground: true } }, later,
+  ]);
+  await Notifications.setNotificationCategoryAsync("bo.schedule.list", [
+    { identifier: DONE, buttonTitle: "Took all", options: { opensAppToForeground: true } }, later,
+  ]);
+  await Notifications.setNotificationCategoryAsync("bo.item", [
+    { identifier: DONE, buttonTitle: "Took it", options: { opensAppToForeground: true } }, later,
   ]);
 }
 
-export type ScheduleAction = { scheduleId: string; action: "done" | "later" | "open" };
+/**
+ * What a tap or a button on a schedule push asks for, or null if it isn't
+ * one. `item` is set for a put-off item's reminder; `ask` means "open Today
+ * and ask when to be reminded about what's left".
+ */
+export type ScheduleAction = { scheduleId: string; item?: string; ask?: boolean; action: "done" | "later" | "open" };
 
-/** What a tap or a button on a schedule push asks for, or null if it isn't one. */
 export function scheduleActionOf(r: Notifications.NotificationResponse): ScheduleAction | null {
-  const data = r.notification.request.content.data as { kind?: unknown; scheduleId?: unknown } | undefined;
-  if ((data?.kind !== "schedule" && data?.kind !== "schedule-shift") || typeof data.scheduleId !== "string") return null;
+  const data = r.notification.request.content.data as { kind?: unknown; scheduleId?: unknown; item?: unknown; ask?: unknown } | undefined;
+  const kind = data?.kind;
+  if ((kind !== "schedule" && kind !== "schedule-shift" && kind !== "schedule-item") || typeof data?.scheduleId !== "string") return null;
   const action = r.actionIdentifier === DONE ? "done" : r.actionIdentifier === LATER ? "later" : "open";
-  return { scheduleId: data.scheduleId, action };
+  return {
+    scheduleId: data.scheduleId,
+    item: kind === "schedule-item" && typeof data.item === "string" ? data.item : undefined,
+    ask: data.ask === true,
+    action,
+  };
 }
