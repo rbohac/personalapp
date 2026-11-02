@@ -312,3 +312,20 @@ Supersedes the model line of "Areas and capture" above.
   to 200 g until a weight is logged.
 - Migration 0011 adds the columns and the owner's Sermorelin, Wolverine
   patch and Leqvio schedules and protein goal.
+
+## 2026-11-02 — Weekday schedules, doses that follow you, paired sites
+
+- **A daily schedule can be limited to weekdays** (`schedules.weekdays`,
+  0 = Sunday): sermorelin is Monday–Friday. On a day off it reads "Off today ·
+  next Monday" and nothing nudges.
+- **The dose shown and logged is the newest of the last logged dose and the
+  one set on the schedule** (`dose`, `dose_set_at`). Tirzepatide is
+  self-titrated in units; saying "tirzepatide 35 units" is all it takes for
+  the next reminder to say 35. Done logs the dose with the side.
+- **Paired sites** (`opposite_of`): sermorelin alternates belly sides, but on
+  a day tirzepatide is given (logged today, or due today) it takes the side
+  opposite tirzepatide's. That makes the week R-L-R-L-R or L-R-L-R-L, as the
+  owner described, with no separate pattern to keep.
+- Migration 0012 turns the owner's Sermorelin schedule into Mon–Fri, 15
+  units (0.15 ml), belly rotation, paired with tirzepatide; tirzepatide gets
+  a 30-unit dose.

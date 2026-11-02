@@ -9,11 +9,13 @@ namespace Bo.Api.Schedules;
 /// <param name="ShiftedFrom">Set when the last dose was on another day than planned, so the cadence moved: the day it had been planned for.</param>
 /// <param name="Status">What the app shows. See <see cref="ScheduleStatus"/>.</param>
 /// <param name="Rotation">Sites to alternate, in order (shots).</param>
-/// <param name="NextSite">The site for the next dose: the one after the last dose's. Null without a rotation.</param>
+/// <param name="NextSite">The site for the next dose: the one after the last dose's, or opposite a paired shot's that day. Null without a rotation.</param>
+/// <param name="NextDose">The dose to take: the last one logged, else the schedule's.</param>
+/// <param name="Weekdays">Days a daily schedule is due (0 = Sunday); empty = every day.</param>
 public record ScheduleDto(
     Guid Id, string Title, string Area, string? Match, int EveryDays, string At, string? NextDue,
     string? ShiftedFrom, string[] Items, bool Paused, DateTime? SnoozedUntil, DateTime? LastDoneAt, ScheduleStatus Status,
-    ItemMark[] Today, string[] Rotation, string? NextSite);
+    ItemMark[] Today, string[] Rotation, string? NextSite, string? NextDose, int[] Weekdays);
 
 /// <summary>
 /// One item of a daily schedule's list, today. State is open (still to take),
@@ -30,10 +32,10 @@ public record ItemInput(string Item, string State, DateTimeOffset? RemindAt = nu
 /// <param name="DaysLate">Overdue only.</param>
 public record ScheduleStatus(string State, DateTime? DueAt, int DaysLate, string Label);
 
-/// <summary>A new or edited schedule. The whole form, every time.</summary>
+/// <summary>A new or edited schedule. The whole form, every time; Weekdays and Dose left null keep what's stored.</summary>
 public record ScheduleInput(
     string Title, string Area, int EveryDays, string At, string? Match = null, string? NextDue = null,
-    string[]? Items = null, bool Paused = false, string[]? Rotation = null);
+    string[]? Items = null, bool Paused = false, string[]? Rotation = null, int[]? Weekdays = null, string? Dose = null);
 
 /// <summary>How long to put off today's nudge.</summary>
 public record SnoozeInput(int Minutes = 60);
@@ -58,6 +60,10 @@ internal sealed class ScheduleRow
     public int[] Intervals { get; set; } = [];
     public int DosesDone { get; set; }
     public int HeadsUpDays { get; set; }
+    public int[] Weekdays { get; set; } = [];
+    public string? Dose { get; set; }
+    public DateTime? DoseSetAt { get; set; }
+    public Guid? OppositeOf { get; set; }
     public bool Paused { get; set; }
     public DateTime? SnoozedUntil { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -65,10 +71,12 @@ internal sealed class ScheduleRow
     public const string Columns =
         "id, user_id as userid, title, area, match_text as matchtext, every_days as everydays, at_minute as atminute, " +
         "next_due::text as nextdue, shifted_from::text as shiftedfrom, last_entry_at as lastentryat, items, rotation, " +
-        "intervals, doses_done as dosesdone, heads_up_days as headsupdays, paused, " +
+        "intervals, doses_done as dosesdone, heads_up_days as headsupdays, weekdays, dose, dose_set_at as dosesetat, opposite_of as oppositeof, paused, " +
         "snoozed_until as snoozeduntil, created_at as createdat";
 
     public bool Daily => EveryDays == 1;
+    /// <summary>Daily, on these days of the week only (0 = Sunday).</summary>
+    public bool OnDay(DateOnly d) => Weekdays.Length == 0 || Weekdays.Contains((int)d.DayOfWeek);
     /// <summary>A daily schedule with a list is ticked off item by item.</summary>
     public bool ByItem => Daily && Items.Length > 0;
     /// <summary>A course with a set number of doses.</summary>

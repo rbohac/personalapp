@@ -63,11 +63,11 @@ public static class ScheduleEndpoints
         await store.SeedOnceAsync(conn, user, clock, now); // a first schedule made by hand doesn't later get the starters beside it unseen
         var id = await conn.ExecuteScalarAsync<Guid>(
             """
-            insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, paused, rotation)
-            values (@user, @Title, @Area, @Match, @EveryDays, @AtMinute, @NextDue::date, @Items, @Paused, @Rotation)
+            insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, paused, rotation, weekdays, dose)
+            values (@user, @Title, @Area, @Match, @EveryDays, @AtMinute, @NextDue::date, @Items, @Paused, @Rotation, coalesce(@Weekdays, '{}'), @Dose)
             returning id
             """,
-            new { user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation });
+            new { user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose });
         var s = (await ScheduleStore.GetAsync(conn, user, id))!;
         return TypedResults.Created($"/schedules/{id}", await ScheduleStore.DtoAsync(conn, s, clock, now));
     }
@@ -84,10 +84,14 @@ public static class ScheduleEndpoints
             """
             update schedules set title = @Title, area = @Area, match_text = @Match, every_days = @EveryDays, at_minute = @AtMinute,
               shifted_from = case when every_days = @EveryDays and next_due is not distinct from @NextDue::date then shifted_from end,
-              next_due = @NextDue::date, items = @Items, paused = @Paused, rotation = @Rotation, updated_at = now()
+              next_due = @NextDue::date, items = @Items, paused = @Paused, rotation = @Rotation,
+              weekdays = coalesce(@Weekdays, weekdays),
+              dose_set_at = case when @Dose::text is not null and nullif(@Dose, '') is distinct from dose then now() else dose_set_at end,
+              dose = case when @Dose::text is null then dose else nullif(@Dose, '') end,
+              updated_at = now()
             where id = @id and user_id = @user
             """,
-            new { id, user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation });
+            new { id, user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose });
         if (n == 0) return TypedResults.NotFound();
         return TypedResults.Ok(await Fresh(conn, user, id, clock, now));
     }
@@ -166,7 +170,7 @@ public static class ScheduleEndpoints
         return await ScheduleStore.DtoAsync(conn, s, clock, now);
     }
 
-    private sealed record Cleaned(string Title, string Area, string? Match, int EveryDays, int AtMinute, string? NextDue, string[] Items, bool Paused, string[] Rotation);
+    private sealed record Cleaned(string Title, string Area, string? Match, int EveryDays, int AtMinute, string? NextDue, string[] Items, bool Paused, string[] Rotation, int[]? Weekdays, string? Dose);
 
     private static Cleaned? Clean(ScheduleInput b, ScheduleStore store, DateOnly today)
     {
@@ -176,7 +180,15 @@ public static class ScheduleEndpoints
         var items = (b.Items ?? []).Select(i => i.Trim()).Where(i => i.Length > 0).Select(i => i.Length > 80 ? i[..80] : i).Take(40).ToArray();
         var match = b.Match?.Trim() is { Length: > 0 } m ? m : null;
         var rotation = (b.Rotation ?? []).Select(r => r.Trim()).Where(r => r.Length > 0).Distinct().ToArray();
-        return new Cleaned(b.Title.Trim(), b.Area, match, every, ScheduleLogic.Minute(b.At)!.Value, next, items, b.Paused, rotation);
+        // Weekdays only mean something on a daily schedule; all seven is the same as none.
+        int[]? weekdays = null;
+        if (b.Weekdays is not null)
+        {
+            var days = b.Weekdays.Where(d => d is >= 0 and <= 6).Distinct().Order().ToArray();
+            weekdays = every > 1 || days.Length == 7 ? [] : days;
+        }
+        var dose = b.Dose is null ? null : b.Dose.Trim() is { Length: > 0 } d ? (d.Length > 60 ? d[..60] : d) : "";
+        return new Cleaned(b.Title.Trim(), b.Area, match, every, ScheduleLogic.Minute(b.At)!.Value, next, items, b.Paused, rotation, weekdays, dose);
     }
 
     private static string? Problem(ScheduleInput b, ScheduleStore store) =>

@@ -1925,6 +1925,8 @@ export interface components {
             today: components["schemas"]["ItemMark"][];
             rotation: string[];
             nextSite: null | string;
+            nextDose: null | string;
+            weekdays: (number | string)[];
         };
         ScheduleInput: {
             title: string;
@@ -1938,6 +1940,8 @@ export interface components {
             /** @default false */
             paused: boolean;
             rotation?: null | string[];
+            weekdays?: null | (number | string)[];
+            dose?: null | string;
         };
         ScheduleStatus: {
             state: string;
