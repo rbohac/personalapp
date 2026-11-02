@@ -17,6 +17,9 @@ public record PushLogEntry(DateTime At, string Title, int Devices, string Outcom
 /// <summary>Everything about server push for the signed-in person, for "why didn't I get a reminder?".</summary>
 public record PushStatus(string? TimeZone, string QuietHours, PushDevice[] Devices, PushLogEntry[] Recent);
 
+/// <summary>Wait this long before sending (0–10 s), so there's time to lock the phone.</summary>
+public record TestPushInput(int DelaySeconds = 0);
+
 /// <summary>
 /// The phones Bo can ring with a server push. Keyed by an id the app mints
 /// once per install, so a rotated Expo token updates the row instead of
@@ -56,9 +59,10 @@ public static class DeviceEndpoints
     /// Send a test push from the server to every registered phone, then wait
     /// a few seconds for Expo's receipt so the answer says whether Apple took it.
     /// </summary>
-    private static async Task<Ok<PushLogEntry>> Test(HttpContext http, ExpoPush push, Db db, CancellationToken ct)
+    private static async Task<Ok<PushLogEntry>> Test(HttpContext http, ExpoPush push, Db db, CancellationToken ct, TestPushInput? body = null)
     {
         var user = http.User.UserId();
+        if (body?.DelaySeconds is > 0 and var d) await Task.Delay(TimeSpan.FromSeconds(Math.Min(d, 10)), ct);
         var r = await push.SendAsync(user, new PushMessage("Bo server test", "Server pushes reach this phone.", new { kind = "test" }), ct);
         for (var i = 0; i < 6 && r.Outcome == "sent"; i++)
         {

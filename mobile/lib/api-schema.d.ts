@@ -601,7 +601,11 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": null | components["schemas"]["TestPushInput"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
@@ -1977,6 +1981,13 @@ export interface components {
             dueAt: null | string;
             /** Format: date-time */
             remindAt: null | string;
+        };
+        TestPushInput: {
+            /**
+             * Format: int32
+             * @default 0
+             */
+            delaySeconds: number | string;
         };
         TimeZoneInput: {
             timeZone: string;

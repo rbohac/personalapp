@@ -257,3 +257,9 @@ Supersedes the model line of "Areas and capture" above.
   and the log says "No phone registered" instead of saying nothing.
 - Today refetches when the app comes back to the front; a screen loaded at
   7:50 no longer reads "Due at 8:00" at 9:10.
+- (later the same day) Settings › Notifications leads with a standing
+  **Server push** line — ✓ Working with the last delivery time, ✗ Not set up
+  on this phone, ✗ Last push failed, or not tested yet — computed from the
+  server's view, so it's still true after the app restarts. Registering and
+  testing are one button: it registers, then the server pushes 5 seconds
+  later (time to lock the phone) and reports what Apple said.
