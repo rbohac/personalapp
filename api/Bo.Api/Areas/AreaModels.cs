@@ -35,3 +35,17 @@ public sealed record AreaField
 }
 
 public sealed record AreaList(string Id, string Label);
+
+/// <summary>
+/// One word Bo should know: a medication, a name, a brand. Listed in
+/// <c>areas/_vocabulary.json</c>. The app hands every term to the phone's
+/// speech recognizer so it hears the word instead of a sound-alike;
+/// <see cref="Heard"/> records known mishearings for matching later.
+/// </summary>
+public sealed record VocabularyTerm
+{
+    public required string Term { get; init; }
+    public string[] Heard { get; init; } = [];
+}
+
+internal sealed record VocabularyFile(VocabularyTerm[]? Terms);

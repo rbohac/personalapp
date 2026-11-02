@@ -17,6 +17,7 @@ export type UsageSummary = components["schemas"]["UsageSummary"];
 export type UsageBucket = components["schemas"]["UsageBucket"];
 export type AiCall = components["schemas"]["AiCallDto"];
 export type AiCallDetail = components["schemas"]["AiCallDetail"];
+export type VocabularyTerm = components["schemas"]["VocabularyTerm"];
 
 /**
  * The typed client. Every path, body and response type comes from the API's

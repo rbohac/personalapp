@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import Constants from "expo-constants";
 import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
@@ -9,6 +9,7 @@ import { API_URL } from "../../lib/config";
 import { registerPush } from "../../lib/push";
 import { ensureNotificationPermission } from "../../lib/reminders";
 import { applyLatestUpdate, runningLabel, runtimeLabel } from "../../lib/updates";
+import { getRecognizerMode, getVocabulary, setRecognizerMode, type RecognizerMode } from "../../lib/vocabulary";
 import { usePalette, type Palette } from "../../lib/theme";
 
 export default function SettingsScreen() {
@@ -16,6 +17,22 @@ export default function SettingsScreen() {
   const { state, signOut } = useAuth();
   const [pushNote, setPushNote] = useState<string | null>(null);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
+  const [mode, setMode] = useState<RecognizerMode>("phone");
+  const [words, setWords] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getRecognizerMode().then(setMode);
+    getVocabulary().then(
+      (v) => setWords(v.length ? v.map((t) => t.term).join(", ") : "None yet"),
+      () => setWords("Couldn't load"),
+    );
+  }, []);
+
+  function changeMode(onPhone: boolean) {
+    const m: RecognizerMode = onPhone ? "phone" : "apple";
+    setMode(m);
+    void setRecognizerMode(m);
+  }
   const user = state.status === "signedIn" ? state.user : null;
 
   async function testReminder() {
@@ -61,6 +78,17 @@ export default function SettingsScreen() {
         <Button c={c} label="Send a test reminder" onPress={() => void testReminder()} />
         <Button c={c} label="Register for server push" onPress={() => void connectPush()} />
         {pushNote ? <Text style={[s.note, { color: c.muted }]}>{pushNote}</Text> : null}
+      </Group>
+
+      <Group c={c} title="Voice">
+        <View style={[s.line, { borderBottomColor: c.line, alignItems: "center" }]}>
+          <Text style={{ color: c.ink, fontSize: 16 }}>Recognize on this phone</Text>
+          <Switch value={mode === "phone"} onValueChange={changeMode} />
+        </View>
+        <Text style={[s.note, { color: c.muted }]}>
+          {mode === "phone" ? "Works offline. Audio stays on the phone." : "Uses Apple's servers. May pick up the words below more reliably."}
+        </Text>
+        <Text style={[s.note, { color: c.muted, paddingTop: 0 }]}>Words Bo listens for: {words ?? "…"}</Text>
       </Group>
 
       <Group c={c} title="AI">

@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 
+import { getRecognizerMode, recognizerHints } from "./vocabulary";
+
 /**
  * Speech to text for the capture box, on the phone (on-device recognition
  * where iOS supports it). `onText` receives the whole transcript so far,
@@ -41,13 +43,16 @@ export function useDictation(onText: (text: string) => void) {
       setError("Microphone or speech recognition is off for Bo. Turn it on in Settings › Bo.");
       return;
     }
+    const [hints, mode] = await Promise.all([recognizerHints(), getRecognizerMode()]);
     mine.current = true;
     ExpoSpeechRecognitionModule.start({
       lang: "en-US",
       interimResults: true,
       continuous: false,
       addsPunctuation: true,
-      requiresOnDeviceRecognition: ExpoSpeechRecognitionModule.supportsOnDeviceRecognition(),
+      // Words Bo knows (areas/_vocabulary.json): biases what's heard, live.
+      contextualStrings: hints,
+      requiresOnDeviceRecognition: mode === "phone" && ExpoSpeechRecognitionModule.supportsOnDeviceRecognition(),
     });
   }, []);
 

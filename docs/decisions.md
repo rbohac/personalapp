@@ -140,3 +140,17 @@ Supersedes the model line of "Areas and capture" above.
   themes, where the brand coral is too light on white.
 - **Not built yet:** a "this was wrong" button that saves a capture as a new
   worked example. The owner will ask for it if misreads become common.
+
+## 2026-11-02 — Expected words for speech
+
+- **The recognizer is told which words to expect,** rather than fixing the
+  text afterwards. `areas/_vocabulary.json` is served at `GET /vocabulary`,
+  and the app passes the terms to iOS speech recognition as
+  `contextualStrings`. The word appears correctly while you speak; nothing is
+  replaced after the fact. JS-only, so it ships over the air.
+- **One list, in the repo,** beside the areas, so later steps (sound-alike
+  matching on the server, the parser's prompt) read the same words. Each term
+  can carry `heard`: known mishearings, recorded now for that later matching.
+- **On-phone vs Apple's servers is a setting** (Settings › Voice), default
+  on-phone. Apple's server recognizer may honour the list more strongly; the
+  switch lets the owner compare before we decide anything.

@@ -63,3 +63,20 @@ No migration, no app release. A new area is two files.
 
 `_capture.md` holds the parser's general rules (times, several things in one
 sentence, what to do when unsure). It applies to every area.
+
+`_vocabulary.json` lists words Bo should know — medications, brands, names —
+that speech recognition tends to mishear:
+
+```jsonc
+{
+  "terms": [
+    { "term": "tirzepatide", "heard": ["teresa appetite"] },  // heard: known mishearings (optional)
+    { "term": "Vyvanse" }
+  ]
+}
+```
+
+The app hands every `term` to the phone's speech recognizer as an expected
+word, so it's heard correctly as you speak. Add a word here and deploy the
+API; the app picks it up on its next launch. Keep it to words that actually
+get misheard — Apple suggests no more than about a hundred.
