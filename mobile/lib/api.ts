@@ -19,6 +19,8 @@ export type AiCall = components["schemas"]["AiCallDto"];
 export type AiCallDetail = components["schemas"]["AiCallDetail"];
 export type VocabularyItem = components["schemas"]["VocabularyItem"];
 export type VocabularyInput = components["schemas"]["VocabularyInput"];
+export type Schedule = components["schemas"]["ScheduleDto"];
+export type ScheduleInput = components["schemas"]["ScheduleInput"];
 
 /**
  * The typed client. Every path, body and response type comes from the API's

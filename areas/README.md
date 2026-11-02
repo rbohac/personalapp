@@ -83,3 +83,11 @@ deleted on the phone stays deleted; adding a word here later only reaches
 people who haven't opened their list yet. The app hands every term to the
 phone's speech recognizer as an expected word. Apple suggests no more than
 about a hundred, which is the list's cap.
+
+`_schedules.json` is the **starter list of schedules** — things to take on a
+cadence (morning meds daily, a shot every 7 days). Like the words, it's
+copied into a person's schedules the first time they're read, and edited on
+the phone after that (Today tab). A schedule is done when an entry in its
+`area` is logged — and, when it has a `match`, one whose medication contains
+that text. `start` is a weekday ("monday": the next one, today included) or a
+date.

@@ -12,6 +12,7 @@ import { ensureNotificationPermission, registerReminderCategory, reminderActionO
 import { getTask, inputOf, setDone, updateTask } from "../lib/tasks";
 import { usePalette } from "../lib/theme";
 import { applyLatestUpdate } from "../lib/updates";
+import { markDone, registerScheduleCategory, reportTimeZone, scheduleActionOf, snooze } from "../lib/schedules";
 
 export default function RootLayout() {
   // New code arrives over the air; apply it on this launch instead of the next.
@@ -28,8 +29,21 @@ export default function RootLayout() {
   );
 }
 
+/** Act on a tapped schedule nudge: Done logs it, In 1 hour snoozes, a tap opens Today. */
+async function followSchedule(a: NonNullable<ReturnType<typeof scheduleActionOf>>) {
+  try {
+    if (a.action === "done") await markDone(a.scheduleId);
+    else if (a.action === "later") await snooze(a.scheduleId, 60);
+    router.navigate("/today");
+  } catch (e) {
+    Alert.alert("Not updated", e instanceof Error ? e.message : "The server didn't take it.");
+  }
+}
+
 /** Act on a tapped reminder: Done, a snooze, or a plain tap that opens the task. */
 async function follow(r: Notifications.NotificationResponse) {
+  const sa = scheduleActionOf(r);
+  if (sa) return followSchedule(sa);
   const a = reminderActionOf(r);
   if (!a) return;
   try {
@@ -59,6 +73,7 @@ function Gate() {
 
   useEffect(() => {
     void registerReminderCategory();
+    void registerScheduleCategory();
     const take = (r: Notifications.NotificationResponse) => {
       const key = `${r.notification.request.identifier}:${r.notification.date}:${r.actionIdentifier}`;
       if (taken.current.has(key)) return;
@@ -82,6 +97,7 @@ function Gate() {
   useEffect(() => {
     if (!signedIn) return;
     drain();
+    void reportTimeZone();
     void ensureNotificationPermission().then((ok) => {
       if (ok) void refreshPushRegistration();
     });
@@ -106,6 +122,7 @@ function Gate() {
       <Stack.Screen name="ai-usage/[id]" options={{ title: "Call" }} />
       <Stack.Screen name="vocabulary/index" options={{ title: "Words" }} />
       <Stack.Screen name="vocabulary/[id]" options={{ title: "Word" }} />
+      <Stack.Screen name="schedule/[id]" options={{ presentation: "modal", title: "Schedule" }} />
     </Stack>
   );
 }

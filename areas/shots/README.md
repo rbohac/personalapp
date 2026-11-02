@@ -15,11 +15,13 @@ and when you refilled.
 - `event` is `taken` unless the text is about running out or refilling.
 - Sites: "belly"/"stomach" is abdomen; "leg" is thigh. Without a side, use
   `other` and mention it in `note`.
-- With no medication named, use the one most recently recorded here — the
-  owner usually takes one kind of shot. If there's none to go by, use "shot".
+- Always name the medication: the owner takes two weekly shots, so "took my
+  shot" alone is ambiguous. With no medication named, use "shot" and say in
+  `notes` that it wasn't named — a schedule only counts a named one.
 
 ## Known shots
 
 Add what you take and the usual dose:
 
-- (none yet)
+- tirzepatide (Mounjaro / Zepbound) — weekly
+- testosterone — weekly

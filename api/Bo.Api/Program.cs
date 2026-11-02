@@ -26,6 +26,11 @@ builder.Services.AddSingleton<IModelClient>(_ => (builder.Configuration["Capture
     var other => throw new InvalidOperationException($"Capture:Provider \"{other}\" has no client yet."),
 });
 builder.Services.AddSingleton<CaptureParser>();
+// Schedules and their nudges (server pushes through Expo).
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<Bo.Api.Schedules.ScheduleStore>();
+builder.Services.AddHttpClient<Bo.Api.Schedules.ExpoPush>();
+builder.Services.AddHostedService<Bo.Api.Schedules.Nudger>();
 
 var app = builder.Build();
 
@@ -50,5 +55,6 @@ app.MapEntryEndpoints();
 app.MapCaptureEndpoints();
 app.MapAiUsageEndpoints();
 app.MapVocabularyEndpoints();
+app.MapScheduleEndpoints();
 
 app.Run();

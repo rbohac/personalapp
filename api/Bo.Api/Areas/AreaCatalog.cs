@@ -21,6 +21,8 @@ public sealed class AreaCatalog
     public string CaptureGuide { get; }
     /// <summary>areas/_vocabulary.json — words the speech recognizer should expect.</summary>
     public IReadOnlyList<VocabularyTerm> Vocabulary { get; }
+    /// <summary>areas/_schedules.json — the starter schedules.</summary>
+    public IReadOnlyList<StarterSchedule> StarterSchedules { get; private init; } = [];
 
     private readonly Dictionary<string, AreaDefinition> _byId;
 
@@ -59,7 +61,23 @@ public sealed class AreaCatalog
         if (areas.Count(a => a.Kind == "tasks") != 1) throw new InvalidOperationException($"{dir}: exactly one area must have kind \"tasks\".");
 
         var capture = Path.Combine(dir, "_capture.md");
-        return new AreaCatalog(areas, File.Exists(capture) ? File.ReadAllText(capture) : "", LoadVocabulary(Path.Combine(dir, "_vocabulary.json")));
+        return new AreaCatalog(areas, File.Exists(capture) ? File.ReadAllText(capture) : "", LoadVocabulary(Path.Combine(dir, "_vocabulary.json")))
+        {
+            StarterSchedules = LoadStarterSchedules(Path.Combine(dir, "_schedules.json"), areas),
+        };
+    }
+
+    private static List<StarterSchedule> LoadStarterSchedules(string file, List<AreaDefinition> areas)
+    {
+        if (!File.Exists(file)) return [];
+        var list = JsonSerializer.Deserialize<SchedulesFile>(File.ReadAllText(file), Json)?.Schedules ?? [];
+        foreach (var s in list)
+        {
+            if (areas.FirstOrDefault(a => a.Id == s.Area) is not { Kind: "log" }) throw new InvalidOperationException($"{file}: \"{s.Title}\" names no log area \"{s.Area}\".");
+            if (s.EveryDays is < 1 or > 365) throw new InvalidOperationException($"{file}: \"{s.Title}\" everyDays must be 1–365.");
+            if (!TimeOnly.TryParseExact(s.At, "HH:mm", out _)) throw new InvalidOperationException($"{file}: \"{s.Title}\" at must be HH:mm.");
+        }
+        return [.. list];
     }
 
     private static List<VocabularyTerm> LoadVocabulary(string file)
