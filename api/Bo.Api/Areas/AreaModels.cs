@@ -80,6 +80,8 @@ public sealed record StarterGoal
     public decimal Target { get; init; }
     public string? ExcludeField { get; init; }
     public string[] ExcludeValues { get; init; } = [];
+    /// <summary>week (default) or day.</summary>
+    public string Period { get; init; } = "week";
 }
 
 internal sealed record GoalsFile(StarterGoal[]? Goals);

@@ -1,229 +1,507 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { ActionSheetIOS, Alert, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, Tabs, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 
 import { AreaIcon } from "../../components/AreaIcon";
-import type { CaptureResult, Entry, Proposal } from "../../lib/api";
+import { useRemindPicker } from "../../components/RemindPicker";
+import type { Entry, Goal, ItemMark, Schedule, Task } from "../../lib/api";
 import { getAreas, listEntries } from "../../lib/areas";
-import { capture, saveProposal, type CaptureSource } from "../../lib/capture";
+import { useAuth } from "../../lib/auth";
 import { whenLabel } from "../../lib/dates";
+import { listGoals } from "../../lib/goals";
+import { listTasks } from "../../lib/tasks";
 import { onChanged } from "../../lib/events";
+import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, setItem, shortDate, siteLabel, weekday, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
-import { useDictation } from "../../lib/voice";
 
 /**
- * Log: say or type what happened, see what Bo understood, keep what's right.
- * Nothing is saved until Save — a misheard number never lands silently.
+ * Home: what needs you now, what's coming up, this week's goals, and what
+ * was logged lately — one screen, glanceable. Detail is a tap away: a daily
+ * list shows one line ("8 of 8 taken") until opened.
  */
-export default function LogScreen() {
+export default function HomeScreen() {
   const c = usePalette();
-  const [text, setText] = useState("");
-  const [source, setSource] = useState<CaptureSource>("typed");
-  const [reading, setReading] = useState(false);
-  const [result, setResult] = useState<CaptureResult | null>(null);
-  const [read, setRead] = useState("");
-  const [skip, setSkip] = useState<Set<number>>(new Set());
-  const [saving, setSaving] = useState(false);
+  const insets = useSafeAreaInsets();
+  const { state } = useAuth();
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [recent, setRecent] = useState<Entry[]>([]);
   const [icons, setIcons] = useState<Record<string, string>>({});
-
-  const dictation = useDictation((t) => {
-    setText(t);
-    setSource("voice");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  // Set from a push ("Not taken yet…"): ask when to remind about what's left.
+  const { ask: askParam } = useLocalSearchParams<{ ask?: string }>();
+  // A ref, not state: the sheet's callback runs before a re-render would land.
+  const remindFor = useRef<{ id: string; items: string[] } | null>(null);
+  const remind = useRemindPicker(c, (at) => {
+    const target = remindFor.current;
+    if (!target) return;
+    void act(target.id, async (id) => {
+      let last: Schedule | null = null;
+      for (const item of target.items) last = await setItem(id, item, "later", at);
+      return last!;
+    });
   });
 
-  const loadRecent = useCallback(async () => {
+  function askWhen(id: string, items: string[]) {
+    if (items.length === 0) return;
+    remindFor.current = { id, items };
+    remind.ask(items.length === 1 ? `Remind me to take ${itemName(items[0])}` : `Remind me about ${items.length} items`);
+  }
+
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      setRecent(await listEntries(undefined, 15));
-    } catch {
-      /* the capture box still works; the list fills in next time */
+      const [ss, gs, ts, es] = await Promise.all([
+        listSchedules(),
+        listGoals().catch(() => [] as Goal[]),
+        listTasks("open").catch(() => [] as Task[]),
+        listEntries(undefined, 40).catch(() => [] as Entry[]),
+      ]);
+      setSchedules(ss);
+      setGoals(gs);
+      setTasks(ts);
+      setRecent(es);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't load schedules.");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  useFocusEffect(useCallback(() => void loadRecent(), [loadRecent]));
-  useEffect(() => onChanged("entries", () => void loadRecent()), [loadRecent]);
+  useFocusEffect(useCallback(() => void load(), [load]));
+  useEffect(() => onChanged("schedules", () => void load()), [load]);
+  useEffect(() => onChanged("entries", () => void load()), [load]);
+  useEffect(() => onChanged("goals", () => void load()), [load]);
+  useEffect(() => onChanged("tasks", () => void load()), [load]);
   useEffect(() => {
     getAreas().then((as) => setIcons(Object.fromEntries(as.map((a) => [a.id, a.icon ?? ""])))).catch(() => undefined);
   }, []);
-
-  async function readIt(words = text, from = source) {
-    const t = words.trim();
-    if (!t) return;
-    // Put the keyboard away so the proposals and Recent list are in view.
-    Keyboard.dismiss();
-    setReading(true);
-    try {
-      const r = await capture(t, from);
-      setResult(r);
-      setRead(t);
-      // Anything that can't be saved as is starts unticked.
-      setSkip(new Set(r.proposals.flatMap((p, i) => (p.problems.length ? [i] : []))));
-    } catch (e) {
-      Alert.alert("Couldn't read that", e instanceof Error ? e.message : "The server didn't answer.");
-    } finally {
-      setReading(false);
-    }
-  }
-
-  // When dictation stops on its own, read what was heard straight away.
-  const wasListening = useRef(false);
+  // Coming back to the app is not a focus change; refetch so "Due at 8" doesn't linger past 8.
   useEffect(() => {
-    if (wasListening.current && !dictation.listening && text.trim()) void readIt(text, "voice");
-    wasListening.current = dictation.listening;
-    // readIt is stable enough for this: it reads the latest text passed in.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dictation.listening]);
+    const sub = AppState.addEventListener("change", (st) => st === "active" && void load());
+    return () => sub.remove();
+  }, [load]);
 
-  function reset() {
-    setText("");
-    setSource("typed");
-    setResult(null);
-    setSkip(new Set());
+  function add() {
+    ActionSheetIOS.showActionSheetWithOptions({ options: ["New schedule", "New goal", "Cancel"], cancelButtonIndex: 2 }, (i) => {
+      if (i === 0) router.push({ pathname: "/schedule/[id]", params: { id: "new" } });
+      if (i === 1) router.push({ pathname: "/goal/[id]", params: { id: "new" } });
+    });
   }
 
-  async function saveAll() {
-    if (!result) return;
-    const keep = result.proposals.filter((p, i) => !skip.has(i) && p.problems.length === 0);
-    setSaving(true);
+  // Arriving from a "not taken yet" push: ask once the list has loaded.
+  const [asked, setAsked] = useState<string | null>(null);
+  useEffect(() => {
+    if (!askParam || asked === askParam) return;
+    const sch = schedules.find((x) => x.id === askParam);
+    if (!sch) return;
+    setAsked(askParam);
+    askWhen(sch.id, sch.today.filter((m) => m.state === "open").map((m) => m.item));
+  }, [askParam, schedules]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function act(id: string, fn: (id: string) => Promise<Schedule>) {
+    setBusy(id);
     try {
-      for (const p of keep) await saveProposal(p, read, source, result.captureId);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      reset();
-      void loadRecent();
+      await fn(id);
     } catch (e) {
-      Alert.alert("Not everything saved", e instanceof Error ? e.message : "The server didn't take it.");
+      Alert.alert("Didn't go through", e instanceof Error ? e.message : "The server didn't take it.");
     } finally {
-      setSaving(false);
+      setBusy(null);
     }
   }
 
-  /** A proposal with something missing opens the entry form with what was understood filled in. */
-  function fix(p: Proposal) {
-    if (p.kind !== "entry") return;
-    router.push({ pathname: "/entry/[id]", params: { id: "new", area: p.area, at: p.at, data: JSON.stringify(p.data), raw: read, source } });
-  }
-
-  const keepCount = result ? result.proposals.filter((p, i) => !skip.has(i) && p.problems.length === 0).length : 0;
+  // Now: due, late, later today, and what's done today. Coming up: the rest.
+  const rank = (s: Schedule) => ({ overdue: 0, due: 1, later: 2, done: 3, upcoming: 4, paused: 5 })[s.status.state] ?? 4;
+  const now = [...schedules].filter((x) => ["overdue", "due", "later", "done"].includes(x.status.state)).sort((a, b) => rank(a) - rank(b));
+  const upcoming = schedules.filter((x) => x.status.state === "upcoming");
+  const soon = Date.now() + 3 * 24 * 3600e3;
+  const tasksSoon = tasks
+    .map((t) => ({ t, at: t.remindAt ?? t.dueAt }))
+    .filter((x): x is { t: Task; at: string } => !!x.at && new Date(x.at).getTime() < soon)
+    .sort((a, b) => a.at.localeCompare(b.at))
+    .slice(0, 5);
+  const needs = schedules.filter((x) => x.status.state === "due" || x.status.state === "overdue").length
+    + tasks.filter((t) => (t.remindAt ?? t.dueAt) && new Date((t.remindAt ?? t.dueAt)!).getTime() < Date.now()).length;
+  const name = state.status === "signedIn" ? (state.user.name ?? "").split(" ")[0] : "";
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
 
   return (
-    // Swipe down, or tap anywhere that isn't a control, to put the keyboard away.
     <ScrollView
       style={{ backgroundColor: c.bg }}
-      contentContainerStyle={s.scroll}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
+      contentContainerStyle={[s.body, { paddingTop: insets.top + 12 }]}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={c.accent} />}
     >
-      <Pressable onPress={Keyboard.dismiss} accessible={false} style={s.body}>
-      <View style={[s.box, { backgroundColor: c.card, borderColor: dictation.listening ? c.accent : c.line }]}>
-        <TextInput
-          value={text}
-          onChangeText={(t) => {
-            setText(t);
-            setSource("typed");
-          }}
-          placeholder="Took my BP, 120/80, pulse 72"
-          placeholderTextColor={c.muted}
-          style={[s.input, { color: c.ink }]}
-          multiline
-          blurOnSubmit
-          returnKeyType="go"
-          onSubmitEditing={() => void readIt()}
-        />
-        <View style={s.boxActions}>
-          <Pressable
-            onPress={() => (dictation.listening ? dictation.stop() : void dictation.start())}
-            style={[s.mic, { backgroundColor: dictation.listening ? c.accent : c.bg }]}
-            accessibilityLabel={dictation.listening ? "Stop listening" : "Speak"}
-          >
-            <Ionicons name={dictation.listening ? "stop" : "mic"} size={24} color={dictation.listening ? c.accentInk : c.accent} />
-          </Pressable>
-          <Pressable onPress={() => void readIt()} disabled={reading || !text.trim()} style={[s.read, { backgroundColor: c.accent, opacity: reading || !text.trim() ? 0.4 : 1 }]}>
-            {reading ? <ActivityIndicator color={c.accentInk} /> : <Text style={[s.readText, { color: c.accentInk }]}>Read</Text>}
-          </Pressable>
+      <View style={s.top}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: c.muted, fontSize: 15 }}>
+            {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+          </Text>
+          <Text style={{ color: c.ink, fontSize: 32, fontWeight: "700" }}>
+            {greeting}
+            {name ? `, ${name}` : ""}
+          </Text>
         </View>
+        <Pressable onPress={add} hitSlop={10} accessibilityLabel="Add a schedule or goal">
+          <Ionicons name="add-circle-outline" size={30} color={c.accent} />
+        </Pressable>
       </View>
-      {dictation.listening ? <Text style={[s.hint, { color: c.accent }]}>Listening…</Text> : null}
-      {dictation.error ? <Text style={[s.hint, { color: c.danger }]}>{dictation.error}</Text> : null}
 
-      {result ? (
-        <View style={s.section}>
-          {result.note ? <Text style={[s.note, { color: c.muted }]}>{result.note}</Text> : null}
-          {result.proposals.length === 0 ? <Text style={[s.note, { color: c.ink }]}>Nothing to log in that. Try saying it another way.</Text> : null}
-          {result.proposals.map((p, i) => (
-            <ProposalCard
-              key={i}
-              p={p}
+      <View style={[s.strip, { backgroundColor: c.card, borderColor: c.line }]}>
+        <Text style={{ color: c.ink, fontSize: 16 }}>Needs you</Text>
+        <Text style={{ color: needs > 0 ? c.accent : c.muted, fontSize: 16, fontWeight: needs > 0 ? "600" : "400" }}>
+          {needs > 0 ? `${needs} now` : "All caught up ✓"}
+        </Text>
+      </View>
+
+      {error ? <Text style={{ color: c.danger, fontSize: 14 }}>{error}</Text> : null}
+
+      {now.length > 0 ? <Heading c={c} text="NOW" /> : null}
+      {now.map((sch) => (
+        <Card key={sch.id} c={c} sch={sch} busy={busy === sch.id} onAct={act} onAskWhen={askWhen} />
+      ))}
+
+      {upcoming.length + tasksSoon.length > 0 ? <Heading c={c} text="COMING UP" /> : null}
+      {upcoming.length + tasksSoon.length > 0 ? (
+        <View style={[s.card, { backgroundColor: c.card, borderColor: c.line, gap: 0, paddingVertical: 4 }]}>
+          {upcoming.map((sch) => (
+            <Row
+              key={sch.id}
               c={c}
-              kept={!skip.has(i) && p.problems.length === 0}
-              onToggle={() => setSkip((prev) => { const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next; })}
-              onFix={() => fix(p)}
+              icon="calendar-outline"
+              title={sch.title + (sch.nextSite ? ` · ${siteLabel(sch.nextSite)}` : "")}
+              right={sch.status.label}
+              onPress={() => router.push({ pathname: "/schedule/[id]", params: { id: sch.id } })}
             />
           ))}
-          <View style={s.row}>
-            <Pressable onPress={reset} style={[s.secondary, { borderColor: c.line }]}>
-              <Text style={{ color: c.muted, fontSize: 16 }}>Discard</Text>
-            </Pressable>
-            <Pressable onPress={() => void saveAll()} disabled={saving || keepCount === 0} style={[s.primary, { backgroundColor: c.accent, opacity: saving || keepCount === 0 ? 0.4 : 1 }]}>
-              {saving ? <ActivityIndicator color={c.accentInk} /> : <Text style={[s.readText, { color: c.accentInk }]}>Save {keepCount || ""}</Text>}
-            </Pressable>
-          </View>
+          {tasksSoon.map(({ t, at }) => (
+            <Row
+              key={t.id}
+              c={c}
+              icon={t.remindAt ? "alarm-outline" : "checkbox-outline"}
+              title={t.title}
+              right={whenLabel(at)}
+              late={new Date(at).getTime() < Date.now()}
+              onPress={() => router.push({ pathname: "/task/[id]", params: { id: t.id } })}
+            />
+          ))}
         </View>
       ) : null}
 
-      <View style={s.section}>
-        <Text style={[s.heading, { color: c.muted }]}>RECENT</Text>
-        {recent.length === 0 ? <Text style={[s.note, { color: c.muted }]}>Nothing logged yet.</Text> : null}
-        {recent.map((e) => (
-          <Pressable key={e.id} onPress={() => router.push({ pathname: "/entry/[id]", params: { id: e.id } })} style={[s.recent, { borderBottomColor: c.line }]}>
-            <AreaIcon name={icons[e.area] ?? ""} c={c} size={18} />
-            <Text style={[s.recentText, { color: c.ink }]} numberOfLines={1}>{e.summary}</Text>
-            <Text style={{ color: c.muted, fontSize: 13 }}>{whenLabel(e.at)}</Text>
-          </Pressable>
-        ))}
-      </View>
-      </Pressable>
+      {goals.length > 0 ? <Week c={c} goals={goals} /> : null}
+
+      {recent.length > 0 ? (
+        <>
+          <Heading c={c} text="RECENT" />
+          <View style={[s.card, { backgroundColor: c.card, borderColor: c.line, gap: 0, paddingVertical: 4 }]}>
+            {groupRecent(recent).slice(0, 6).map((g) => (
+              <Row
+                key={g.key}
+                c={c}
+                area={icons[g.area] ?? ""}
+                title={g.title}
+                right={whenLabel(g.at)}
+                onPress={() => (g.id ? router.push({ pathname: "/entry/[id]", params: { id: g.id } }) : router.push({ pathname: "/area/[id]", params: { id: g.area } }))}
+              />
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {!error && !loading && schedules.length === 0 && goals.length === 0 ? (
+        <Text style={{ color: c.muted, fontSize: 15 }}>Nothing scheduled yet. Tap + to add a schedule or a goal.</Text>
+      ) : null}
+      {remind.picker}
     </ScrollView>
   );
 }
 
-function ProposalCard({ p, c, kept, onToggle, onFix }: { p: Proposal; c: Palette; kept: boolean; onToggle: () => void; onFix: () => void }) {
-  const blocked = p.problems.length > 0;
-  const when = p.task?.remindAt ? `Remind ${whenLabel(p.task.remindAt)}` : p.task?.dueAt ? `Due ${whenLabel(p.task.dueAt)}` : p.kind === "entry" ? whenLabel(p.at) : null;
+/**
+ * Recent entries, with a run of medications logged together (ticking the
+ * morning list) folded into one row: "Medications · 8 taken".
+ */
+function groupRecent(entries: Entry[]): { key: string; id: string | null; area: string; title: string; at: string }[] {
+  const out: { key: string; id: string | null; area: string; title: string; at: string }[] = [];
+  for (let i = 0; i < entries.length; ) {
+    const e = entries[i];
+    let j = i + 1;
+    if (e.area === "medications") {
+      while (j < entries.length && entries[j].area === "medications" && Math.abs(new Date(entries[j - 1].at).getTime() - new Date(entries[j].at).getTime()) < 30 * 60e3) j++;
+    }
+    const n = j - i;
+    out.push(
+      n > 1
+        ? { key: e.id, id: null, area: e.area, title: `Medications · ${n} taken`, at: e.at }
+        : { key: e.id, id: e.id, area: e.area, title: e.summary, at: e.at },
+    );
+    i = j;
+  }
+  return out;
+}
+
+function Heading({ c, text }: { c: Palette; text: string }) {
+  return <Text style={{ color: c.muted, fontSize: 12, fontWeight: "600", paddingHorizontal: 4, marginTop: 8 }}>{text}</Text>;
+}
+
+function Row({ c, icon, area, title, right, late, onPress }: {
+  c: Palette; icon?: keyof typeof Ionicons.glyphMap; area?: string; title: string; right: string; late?: boolean; onPress: () => void;
+}) {
   return (
-    <Pressable onPress={blocked ? onFix : onToggle} style={[s.card, { backgroundColor: c.card, borderColor: kept ? c.accent : c.line }]}>
-      <AreaIcon name={p.icon} c={c} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ color: c.muted, fontSize: 13 }}>{p.areaName}{when ? ` · ${when}` : ""}</Text>
-        <Text style={{ color: c.ink, fontSize: 17, fontWeight: "600" }}>{p.summary}</Text>
-        {p.problems.map((x) => (
-          <Text key={x} style={{ color: c.danger, fontSize: 13 }}>{x}</Text>
-        ))}
-        {blocked && p.kind === "entry" ? <Text style={{ color: c.accent, fontSize: 13 }}>Tap to fill in and save</Text> : null}
+    <Pressable onPress={onPress} style={[s.row2, { borderBottomColor: c.line }]}>
+      {area !== undefined ? <AreaIcon name={area} c={c} size={18} /> : <Ionicons name={icon ?? "ellipse-outline"} size={18} color={c.accent} />}
+      <Text style={{ color: c.ink, fontSize: 15, flex: 1 }} numberOfLines={1}>{title}</Text>
+      <Text style={{ color: late ? c.danger : c.muted, fontSize: 13 }}>{right}</Text>
+    </Pressable>
+  );
+}
+
+type Act = (id: string, fn: (id: string) => Promise<Schedule>) => void;
+
+function Card({ c, sch, busy, onAct, onAskWhen }: { c: Palette; sch: Schedule; busy: boolean; onAct: Act; onAskWhen: (id: string, items: string[]) => void }) {
+  const st = sch.status.state;
+  const byItem = sch.today.length > 0;
+  const [open, setOpen] = useState(false);
+  const taken = sch.today.filter((m) => m.state === "taken").length;
+  const skipped = sch.today.filter((m) => m.state === "skipped").length;
+  const later = sch.today.filter((m) => m.state === "later").length;
+  const left = sch.today.length - taken - skipped - later;
+  const tone = st === "overdue" ? c.danger : st === "due" ? c.accent : st === "done" ? c.muted : c.ink;
+  const canDone = st !== "done" && st !== "paused";
+  const dimmed = st === "done" || st === "paused" || st === "upcoming";
+
+  return (
+    <Pressable
+      onPress={() => router.push({ pathname: "/schedule/[id]", params: { id: sch.id } })}
+      style={[s.card, { backgroundColor: c.card, borderColor: st === "due" || st === "overdue" ? tone : c.line }]}
+    >
+      <View style={s.head}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ color: c.ink, fontSize: 17, fontWeight: "600", opacity: dimmed ? 0.75 : 1 }}>{sch.title}</Text>
+          <Text style={{ color: c.muted, fontSize: 13 }}>{cadenceLabel(sch)}</Text>
+          {sch.nextSite ? (
+            <Text style={{ color: st === "due" || st === "overdue" ? tone : c.ink, fontSize: 14, fontWeight: "500" }}>
+              Next: {siteLabel(sch.nextSite)}
+            </Text>
+          ) : null}
+        </View>
+        <View style={{ alignItems: "flex-end", gap: 2 }}>
+          {st === "done" ? <Ionicons name="checkmark-circle" size={20} color={c.muted} /> : null}
+          <Text style={{ color: tone, fontSize: 14, fontWeight: st === "due" || st === "overdue" ? "600" : "400" }}>{sch.status.label}</Text>
+        </View>
       </View>
-      {!blocked ? <Ionicons name={kept ? "checkmark-circle" : "ellipse-outline"} size={24} color={kept ? c.accent : c.muted} /> : null}
+
+      {byItem ? (
+        <Pressable onPress={() => setOpen((o) => !o)} style={[s.summary, { borderColor: c.line }]} hitSlop={4}>
+          <View style={[s.track, { flex: 1, backgroundColor: c.track }]}>
+            <View style={[s.fill, { width: `${(100 * (taken + skipped)) / sch.today.length}%`, backgroundColor: c.chart }]} />
+          </View>
+          <Text style={{ color: c.ink, fontSize: 14 }}>
+            {taken} of {sch.today.length} taken
+            {skipped ? ` · ${skipped} skipped` : ""}
+            {later ? ` · ${later} later` : ""}
+            {left && taken ? ` · ${left} left` : ""}
+          </Text>
+          <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={c.muted} />
+        </Pressable>
+      ) : null}
+      {byItem && open ? (
+        <ItemChips c={c} sch={sch} onAct={onAct} onAskWhen={onAskWhen} />
+      ) : !byItem && sch.items.length > 0 && !dimmed ? (
+        <View style={{ gap: 3 }}>
+          {sch.items.map((i) => (
+            <Text key={i} style={{ color: c.ink, fontSize: 15 }}>
+              • {i}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      {sch.shiftedFrom && sch.nextDue ? (
+        <View style={[s.banner, { borderColor: c.line }]}>
+          <Text style={{ color: c.ink, fontSize: 14 }}>
+            Logged off schedule, so the next one moved to {shortDate(sch.nextDue)}.
+          </Text>
+          <View style={s.row}>
+            <Small c={c} label={`Keep ${weekday(sch.shiftedFrom)}s`} onPress={() => onAct(sch.id, keepDay)} />
+            <Small c={c} label={`${weekday(sch.nextDue)}s are fine`} onPress={() => onAct(sch.id, acceptDay)} />
+          </View>
+        </View>
+      ) : null}
+
+      {canDone ? (
+        <View style={s.row}>
+          <Pressable
+            onPress={() => onAct(sch.id, markDone)}
+            disabled={busy}
+            style={[s.done, { backgroundColor: st === "upcoming" || st === "later" ? c.bg : c.accent, borderColor: c.accent, opacity: busy ? 0.5 : 1 }]}
+          >
+            <Text style={{ color: st === "upcoming" || st === "later" ? c.accent : c.accentInk, fontSize: 15, fontWeight: "600" }}>
+              {st === "upcoming" ? "Log it now" : byItem ? "Took all" : "Done"}
+            </Text>
+          </Pressable>
+          {byItem && !open && left > 0 ? (
+            <Pressable onPress={() => setOpen(true)} style={[s.done, { borderColor: c.line }]}>
+              <Text style={{ color: c.ink, fontSize: 15 }}>Tick some</Text>
+            </Pressable>
+          ) : null}
+          {byItem && open && sch.today.some((m) => m.state === "open") ? (
+            <Pressable
+              onPress={() => onAskWhen(sch.id, sch.today.filter((m) => m.state === "open").map((m) => m.item))}
+              style={[s.done, { borderColor: c.line }]}
+            >
+              <Text style={{ color: c.ink, fontSize: 15 }}>Remind me later</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+/**
+ * A daily list as buttons: tap to tick taken (tap again to untick); hold for
+ * skip today or remind me later. Colour says the state at a glance.
+ */
+function ItemChips({ c, sch, onAct, onAskWhen }: { c: Palette; sch: Schedule; onAct: Act; onAskWhen: (id: string, items: string[]) => void }) {
+  const set = (m: ItemMark, state: ItemState) => onAct(sch.id, (id) => setItem(id, m.item, state));
+
+  function tap(m: ItemMark) {
+    if (m.state === "taken") {
+      if (m.byEntry) Alert.alert("Logged already", `An entry you logged today names ${itemName(m.item)}. Open it under Recent and delete it to untick.`);
+      else set(m, "open");
+    } else set(m, "taken");
+  }
+
+  function hold(m: ItemMark) {
+    const options = ["Taken", "Skip today", "Remind me later…", ...(m.state !== "open" && !m.byEntry ? ["Not yet (untick)"] : []), "Cancel"];
+    ActionSheetIOS.showActionSheetWithOptions({ title: m.item, options, cancelButtonIndex: options.length - 1 }, (i) => {
+      const pick = options[i];
+      if (pick === "Taken") set(m, "taken");
+      else if (pick === "Skip today") set(m, "skipped");
+      else if (pick === "Remind me later…") onAskWhen(sch.id, [m.item]);
+      else if (pick === "Not yet (untick)") set(m, "open");
+    });
+  }
+
+  return (
+    <View style={s.chips}>
+      {sch.today.map((m) => {
+        const look =
+          m.state === "taken" ? { bg: c.accent, border: c.accent, ink: c.accentInk, icon: "checkmark" as const }
+          : m.state === "skipped" ? { bg: c.bg, border: c.line, ink: c.muted, icon: "remove" as const }
+          : m.state === "later" ? { bg: c.bg, border: c.late, ink: c.late, icon: "time-outline" as const }
+          : { bg: c.card, border: c.accent, ink: c.ink, icon: null };
+        return (
+          <Pressable
+            key={m.item}
+            onPress={() => tap(m)}
+            onLongPress={() => hold(m)}
+            delayLongPress={350}
+            style={({ pressed }) => [s.chip, { backgroundColor: look.bg, borderColor: look.border, opacity: pressed ? 0.6 : 1 }]}
+          >
+            {look.icon ? <Ionicons name={look.icon} size={16} color={look.ink} /> : null}
+            <Text style={{ color: look.ink, fontSize: 15, fontWeight: m.state === "taken" ? "600" : "400", textDecorationLine: m.state === "skipped" ? "line-through" : "none" }}>
+              {m.item}
+              {m.state === "later" && m.remindAt ? ` · ${new Date(m.remindAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}` : ""}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** One day of a per-day goal: a short bar, full when the target was reached. */
+function DayBars({ c, g }: { c: Palette; g: Goal }) {
+  const target = Number(g.target);
+  return (
+    <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-end", height: 28 }}>
+      {g.days.map((d) => {
+        const v = Number(d.value);
+        const h = Math.max(3, Math.min(28, target > 0 ? (28 * v) / target : 0));
+        const label = new Date(d.day + "T12:00:00").toLocaleDateString(undefined, { weekday: "narrow" });
+        return (
+          <View key={d.day} style={{ alignItems: "center", gap: 2, flex: 1 }}>
+            <View style={{ width: "100%", height: h, borderRadius: 3, backgroundColor: d.met ? c.chart : c.track }} />
+            <Text style={{ color: c.muted, fontSize: 10 }}>{label}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/** This week's goals: a bar each, filled toward the target. A per-day goal shows today and the last 7 days. */
+function Week({ c, goals }: { c: Palette; goals: Goal[] }) {
+  const left = Number(goals[0].progress.daysLeft);
+  return (
+    <View style={{ gap: 8, marginTop: 8 }}>
+      <Text style={{ color: c.muted, fontSize: 12, fontWeight: "600", paddingHorizontal: 4 }}>
+        THIS WEEK · {left === 1 ? "LAST DAY" : `${left} DAYS LEFT`}
+      </Text>
+      <View style={[s.card, { backgroundColor: c.card, borderColor: c.line, gap: 14 }]}>
+        {goals.map((g) => {
+          const value = Number(g.progress.value);
+          const target = Number(g.progress.target);
+          const share = Math.min(1, target > 0 ? value / target : 0);
+          return (
+            <Pressable key={g.id} onPress={() => router.push({ pathname: "/goal/[id]", params: { id: g.id } })} style={{ gap: 6, opacity: g.paused ? 0.5 : 1 }}>
+              <View style={s.head}>
+                <Text style={{ color: c.ink, fontSize: 15, fontWeight: "600", flex: 1 }}>
+                  {g.progress.met ? "✓ " : ""}
+                  {g.title}
+                </Text>
+                <Text style={{ color: g.progress.met ? c.ink : c.muted, fontSize: 14 }}>{g.paused ? "Paused" : g.progress.label}</Text>
+              </View>
+              <View style={[s.track, { backgroundColor: c.track }]}>
+                <View style={[s.fill, { width: `${share * 100}%`, backgroundColor: c.chart }]} />
+              </View>
+              {g.period === "day" ? (
+                <>
+                  <DayBars c={c} g={g} />
+                  <Text style={{ color: c.muted, fontSize: 12 }}>
+                    {g.progress.daysMet} {Number(g.progress.daysMet) === 1 ? "day" : "days"} this week · last week {g.progress.lastWeek}
+                  </Text>
+                </>
+              ) : (
+                <Text style={{ color: c.muted, fontSize: 12 }}>Last week {Number(g.progress.lastWeek).toLocaleString(undefined, { maximumFractionDigits: 1 })}</Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function Small({ c, label, onPress }: { c: Palette; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[s.small, { borderColor: c.accent }]}>
+      <Text style={{ color: c.accent, fontSize: 14, fontWeight: "500" }}>{label}</Text>
     </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  scroll: { flexGrow: 1 },
-  body: { flexGrow: 1, padding: 16, gap: 12 },
-  box: { borderRadius: 16, borderWidth: 1.5, padding: 12, gap: 10 },
-  input: { fontSize: 19, minHeight: 72, textAlignVertical: "top" },
-  boxActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  mic: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
-  read: { height: 44, paddingHorizontal: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  readText: { fontSize: 16, fontWeight: "600" },
-  hint: { fontSize: 14, paddingHorizontal: 4 },
-  section: { gap: 10, marginTop: 8 },
-  note: { fontSize: 14 },
-  card: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1.5 },
-  row: { flexDirection: "row", gap: 10 },
-  secondary: { flex: 1, height: 48, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  primary: { flex: 2, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  heading: { fontSize: 12, fontWeight: "600", marginTop: 8 },
-  recent: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
-  recentText: { flex: 1, fontSize: 16 },
+  body: { padding: 16, gap: 12 },
+  card: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 10 },
+  head: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+  row: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  banner: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 8 },
+  small: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  done: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  track: { height: 8, borderRadius: 4, overflow: "hidden" },
+  fill: { height: 8, borderRadius: 4 },
+  top: { flexDirection: "row", alignItems: "flex-end", gap: 12, marginBottom: 4 },
+  strip: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14 },
+  row2: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
+  summary: { flexDirection: "row", alignItems: "center", gap: 10 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
 });

@@ -1,0 +1,15 @@
+{
+  "id": "health-events",
+  "name": "Health events",
+  "icon": "bandage-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "what", "label": "What", "type": "text", "required": true },
+    { "key": "where", "label": "Body part", "type": "text" },
+    { "key": "amount", "label": "Amount", "type": "text" },
+    { "key": "provider", "label": "Who / where", "type": "text" },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{what} · {where} · {amount}",
+  "patterns": []
+}

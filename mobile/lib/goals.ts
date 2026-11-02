@@ -2,8 +2,9 @@ import { api, must, type Goal, type GoalInput } from "./api";
 import { changed } from "./events";
 
 /**
- * Weekly goals ("walk at least 4 days", "10 miles", "lift 3 days"). The
- * server works progress out from entries; a week is Monday to Sunday.
+ * Goals, per week ("walk at least 4 days", "10 miles") or per day ("15
+ * minutes of household work"). The server works progress out from entries;
+ * a week is Monday to Sunday.
  */
 const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -31,6 +32,6 @@ export async function deleteGoal(id: string): Promise<void> {
 export function goalInputOf(g: Goal): GoalInput {
   return {
     title: g.title, area: g.area, measure: g.measure, target: Number(g.target), field: g.field,
-    excludeField: g.excludeField, excludeValues: g.excludeValues, paused: g.paused,
+    excludeField: g.excludeField, excludeValues: g.excludeValues, paused: g.paused, period: g.period,
   };
 }

@@ -1783,6 +1783,12 @@ export interface components {
             /** Format: uuid */
             aiUsageId?: null | string;
         };
+        GoalDay: {
+            day: string;
+            /** Format: double */
+            value: number | string;
+            met: boolean;
+        };
         GoalDto: {
             /** Format: uuid */
             id: string;
@@ -1797,6 +1803,8 @@ export interface components {
             excludeValues: string[];
             paused: boolean;
             progress: components["schemas"]["GoalProgress"];
+            period: string;
+            days: components["schemas"]["GoalDay"][];
         };
         GoalInput: {
             title: string;
@@ -1809,6 +1817,8 @@ export interface components {
             excludeValues?: null | string[];
             /** @default false */
             paused: boolean;
+            /** @default week */
+            period: string;
         };
         GoalProgress: {
             /** Format: double */
@@ -1821,6 +1831,11 @@ export interface components {
             label: string;
             /** Format: double */
             lastWeek: number | string;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            daysMet: number | string;
         };
         GoogleSignInRequest: {
             idToken: string;

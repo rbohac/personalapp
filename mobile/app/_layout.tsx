@@ -41,7 +41,7 @@ async function followSchedule(a: NonNullable<ReturnType<typeof scheduleActionOf>
       else if (a.action === "later") await setItem(a.scheduleId, a.item, "later", new Date(Date.now() + 60 * 60 * 1000));
     } else if (a.action === "done") await markDone(a.scheduleId);
     else if (a.action === "later") await snooze(a.scheduleId, 60);
-    router.navigate(a.action === "open" && a.ask ? { pathname: "/today", params: { ask: a.scheduleId } } : "/today");
+    router.navigate(a.action === "open" && a.ask ? { pathname: "/", params: { ask: a.scheduleId } } : "/");
   } catch (e) {
     Alert.alert("Not updated", e instanceof Error ? e.message : "The server didn't take it.");
   }
@@ -51,7 +51,7 @@ async function followSchedule(a: NonNullable<ReturnType<typeof scheduleActionOf>
 async function follow(r: Notifications.NotificationResponse) {
   const sa = scheduleActionOf(r);
   if (sa) return followSchedule(sa);
-  if ((r.notification.request.content.data as { kind?: unknown } | undefined)?.kind === "goals") return void router.navigate("/today");
+  if ((r.notification.request.content.data as { kind?: unknown } | undefined)?.kind === "goals") return void router.navigate("/");
   const a = reminderActionOf(r);
   if (!a) return;
   try {
@@ -131,7 +131,8 @@ function Gate() {
       <Stack.Screen name="vocabulary/index" options={{ title: "Words" }} />
       <Stack.Screen name="vocabulary/[id]" options={{ title: "Word" }} />
       <Stack.Screen name="schedule/[id]" options={{ presentation: "modal", title: "Schedule" }} />
-      <Stack.Screen name="goal/[id]" options={{ presentation: "modal", title: "Weekly goal" }} />
+      <Stack.Screen name="goal/[id]" options={{ presentation: "modal", title: "Goal" }} />
+      <Stack.Screen name="capture" options={{ presentation: "modal", title: "Log" }} />
     </Stack>
   );
 }

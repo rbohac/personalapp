@@ -263,3 +263,26 @@ Supersedes the model line of "Areas and capture" above.
   server's view, so it's still true after the app restarts. Registering and
   testing are one button: it registers, then the server pushes 5 seconds
   later (time to lock the phone) and reports what Apple said.
+
+## 2026-11-02 — Home first, mic in the middle
+
+- **Home is the first tab** (it replaces Today): date and greeting, a
+  *Needs you* line (schedules due or late plus overdue task reminders), then
+  **Now** (today's schedules), **Coming up** (later schedules and tasks with
+  a reminder or due date in the next three days), **This week** (goals) and
+  **Recent** (the last few entries). Modeled on the Spearfish OS home: what
+  to pay attention to, glanceable, detail a tap away.
+- **A daily list is one line until opened:** a bar and "8 of 8 taken · 1
+  skipped"; tapping opens the item buttons. Ticking a list made Recent show
+  eight medication rows, so a run of medications logged within 30 minutes
+  reads as one: "Medications · 8 taken".
+- **The mic is the middle of the tab bar,** not a tab: it opens the capture
+  sheet already listening (hold it to open without listening, to type).
+  The capture sheet no longer carries a history list, and saving closes it.
+- **Goals can be per day** (`goals.period`, migration 0010): "at least 15
+  minutes a day of household work at Brock Road". Home shows today's minutes,
+  the last 7 days as small bars, and days met this week; zero days just show
+  as zero. The weekly pushes count a per-day goal by days met.
+- **Two new areas:** `household` (minutes, what, where — Brock Road by
+  default) and `health-events` (one-off procedures and the like: what, body
+  part, amount, who). Areas are files, so these needed no code.

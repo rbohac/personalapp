@@ -12,7 +12,7 @@ export default function GoalScreen() {
   const c = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === "new";
-  const [form, setForm] = useState<GoalInput | null>(isNew ? { title: "", area: "walks", measure: "days", target: 3, paused: false } : null);
+  const [form, setForm] = useState<GoalInput | null>(isNew ? { title: "", area: "walks", measure: "days", target: 3, paused: false, period: "week" } : null);
   const [targetText, setTargetText] = useState(isNew ? "3" : "");
   const [excludeText, setExcludeText] = useState("");
   const [areas, setAreas] = useState<Area[]>([]);
@@ -97,7 +97,7 @@ export default function GoalScreen() {
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
       <Stack.Screen
         options={{
-          title: isNew ? "New weekly goal" : "Weekly goal",
+          title: isNew ? "New goal" : "Goal",
           headerRight: () => (
             <Pressable onPress={save} disabled={!canSave}>
               <Text style={{ color: c.accent, fontSize: 17, fontWeight: "600", opacity: canSave ? 1 : 0.4 }}>Save</Text>
@@ -122,7 +122,9 @@ export default function GoalScreen() {
         ))}
       </View>
       <View style={s.chips}>
-        <Chip c={c} label="Days with one" on={form.measure === "days"} onPress={() => set({ measure: "days" })} />
+        {form.period !== "day" ? (
+          <Chip c={c} label="Days with one" on={form.measure === "days"} onPress={() => set({ measure: "days" })} />
+        ) : null}
         {numberFields.map((f) => (
           <Chip
             key={f.key}
@@ -134,7 +136,17 @@ export default function GoalScreen() {
         ))}
       </View>
 
-      <Label c={c} text="EACH WEEK, AT LEAST" />
+      <Label c={c} text="HOW OFTEN" />
+      <View style={s.chips}>
+        <Chip c={c} label="Each week" on={form.period !== "day"} onPress={() => set({ period: "week" })} />
+        <Chip
+          c={c}
+          label="Each day"
+          on={form.period === "day"}
+          onPress={() => set({ period: "day", measure: form.measure === "days" ? "total" : form.measure, field: form.field ?? numberFields[0]?.key ?? null })}
+        />
+      </View>
+      <Label c={c} text={form.period === "day" ? "EACH DAY, AT LEAST" : "EACH WEEK, AT LEAST"} />
       <View style={[s.pickRow, { borderColor: c.line, backgroundColor: c.card }]}>
         <TextInput
           value={targetText}
