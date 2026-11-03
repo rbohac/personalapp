@@ -68,6 +68,13 @@ public sealed class AiUsageStore(Db db, IOptions<AiOptions> options, ILogger<AiU
     }
 
     /// <summary>Deletes logs (the words) past the retention window. Usage rows stay.</summary>
+    /// <summary>Idempotency keys only need to outlive a retry; a week is plenty.</summary>
+    public async Task PurgeIdempotencyAsync(CancellationToken ct)
+    {
+        await using var conn = await db.OpenAsync(ct);
+        await conn.ExecuteAsync("delete from idempotency_keys where created_at < now() - interval '7 days'");
+    }
+
     public async Task<int> PurgeLogsAsync(CancellationToken ct)
     {
         await using var conn = await db.OpenAsync(ct);
@@ -87,6 +94,7 @@ public sealed class AiLogRetention(AiUsageStore store, ILogger<AiLogRetention> l
             try
             {
                 var n = await store.PurgeLogsAsync(stoppingToken);
+                await store.PurgeIdempotencyAsync(stoppingToken);
                 if (n > 0) log.LogInformation("Deleted {Count} AI log(s) older than {Days} days.", n, store.Options.LogRetentionDays);
             }
             catch (Exception e) when (e is not OperationCanceledException)

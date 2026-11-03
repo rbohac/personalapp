@@ -57,6 +57,15 @@ const config: ExpoConfig = {
         speechRecognitionPermission: "What you say is turned into text on this phone so Bo can log it.",
       },
     ],
+    // Reads weight, steps and sleep from Apple Health when the owner asks; never writes.
+    [
+      "@kingstinct/react-native-healthkit",
+      {
+        NSHealthShareUsageDescription: "Bo reads your weight, steps and sleep from Apple Health so you don't have to log them by hand.",
+        NSHealthUpdateUsageDescription: false,
+        background: false,
+      },
+    ],
     ...(googleIosClientId
       ? [["@react-native-google-signin/google-signin", { iosUrlScheme: reversedClientId }] as [string, object]]
       : []),

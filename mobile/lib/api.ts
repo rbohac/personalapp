@@ -2,6 +2,8 @@ import createClient, { type Middleware } from "openapi-fetch";
 
 import type { components, paths } from "./api-schema";
 import { API_URL } from "./config";
+import { offlineFetch } from "./offline";
+import { getToken, setToken } from "./token";
 
 export type Task = components["schemas"]["TaskDto"];
 export type TaskInput = components["schemas"]["TaskInput"];
@@ -34,14 +36,15 @@ export type Trends = components["schemas"]["TrendsDto"];
  * OpenAPI contract (lib/api-schema.d.ts), so a renamed field on the server is
  * a type error here rather than an `undefined` at runtime.
  */
-export const api = createClient<paths>({ baseUrl: API_URL });
+// Its fetch is the offline layer (lib/offline.ts): saved answers when there's
+// no connection, and an outbox for the changes made meanwhile.
+export const api = createClient<paths>({ baseUrl: API_URL, fetch: offlineFetch });
 
-let token: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 
 /** Set by the auth provider. A 401 on any call signs the app out. */
 export function setAuth(t: string | null, signOut: (() => void) | null) {
-  token = t;
+  setToken(t);
   onUnauthorized = signOut;
 }
 
@@ -51,10 +54,11 @@ export function setAuth(t: string | null, signOut: (() => void) | null) {
 // the same object threw on every call on the phone (never in Node).
 const auth: Middleware = {
   onRequest({ request }) {
+    const token = getToken();
     if (token) request.headers.set("Authorization", `Bearer ${token}`);
   },
   onResponse({ response }) {
-    if (response.status === 401 && token) onUnauthorized?.();
+    if (response.status === 401 && getToken()) onUnauthorized?.();
   },
 };
 api.use(auth);

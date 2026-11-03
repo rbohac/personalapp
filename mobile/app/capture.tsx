@@ -10,6 +10,8 @@ import { capture, saveProposal, type CaptureSource } from "../lib/capture";
 import { whenLabel } from "../lib/dates";
 import { usePalette, type Palette } from "../lib/theme";
 import { useDictation } from "../lib/voice";
+import { pendingAdd, pendingAll, pendingDelete } from "../lib/local";
+import { isOffline, notify, uuid } from "../lib/offline";
 
 /**
  * Say or type what happened, see what Bo understood, keep what's right.
@@ -26,7 +28,7 @@ export default function CaptureScreen() {
   const [read, setRead] = useState("");
   const [skip, setSkip] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
-  const { listen } = useLocalSearchParams<{ listen?: string }>();
+  const { listen, pending } = useLocalSearchParams<{ listen?: string; pending?: string }>();
   const input = useRef<TextInputInstance>(null);
   // Text that was already in the box when listening started: speech adds to it.
   const before = useRef("");
@@ -46,8 +48,19 @@ export default function CaptureScreen() {
     void dictation.start();
   }
 
-  // The tab bar's mic opens this listening, cursor in the box.
+  // The tab bar's mic opens this listening, cursor in the box. Opened from
+  // "said while offline" it shows what Bo read, ready to review.
   useEffect(() => {
+    const held = pending ? pendingAll().find((p) => p.id === pending) : undefined;
+    if (held?.result) {
+      setText(held.text);
+      setRead(held.text);
+      setSource(held.source === "voice" ? "voice" : "typed");
+      const r = JSON.parse(held.result) as CaptureResult;
+      setResult(r);
+      setSkip(new Set(r.proposals.flatMap((p, i) => (p.problems.length ? [i] : []))));
+      return () => dictation.stop();
+    }
     if (listen === "1") startListening();
     else input.current?.focus();
     return () => dictation.stop();
@@ -67,9 +80,27 @@ export default function CaptureScreen() {
       // Anything that can't be saved as is starts unticked.
       setSkip(new Set(r.proposals.flatMap((p, i) => (p.problems.length ? [i] : []))));
     } catch (e) {
+      if (isOffline(e)) {
+        // No connection: keep the words; they're read when it's back and wait on Home for review.
+        pendingAdd(uuid(), t, from);
+        notify();
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        reset();
+        Alert.alert("Saved for later", "You're offline. Bo will read this when you're back online and ask you to review it on Home.");
+        if (router.canGoBack()) router.back();
+        return;
+      }
       Alert.alert("Couldn't read that", e instanceof Error ? e.message : "The server didn't answer.");
     } finally {
       setReading(false);
+    }
+  }
+
+  /** Done with something said offline: it no longer waits on Home. */
+  function settlePending() {
+    if (pending) {
+      pendingDelete(pending);
+      notify();
     }
   }
 
@@ -95,6 +126,7 @@ export default function CaptureScreen() {
     setSaving(true);
     try {
       for (const p of keep) await saveProposal(p, read, source, result.captureId);
+      settlePending();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       if (router.canGoBack()) router.back();
@@ -182,7 +214,16 @@ export default function CaptureScreen() {
             />
           ))}
           <View style={s.row}>
-            <Pressable onPress={reset} style={[s.secondary, { borderColor: c.line }]}>
+            <Pressable
+              onPress={() => {
+                reset();
+                if (pending) {
+                  settlePending();
+                  if (router.canGoBack()) router.back();
+                }
+              }}
+              style={[s.secondary, { borderColor: c.line }]}
+            >
               <Text style={{ color: c.muted, fontSize: 16 }}>Discard</Text>
             </Pressable>
             <Pressable onPress={() => void saveAll()} disabled={saving || keepCount === 0} style={[s.primary, { backgroundColor: c.accent, opacity: saving || keepCount === 0 ? 0.4 : 1 }]}>

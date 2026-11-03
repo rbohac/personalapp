@@ -369,3 +369,40 @@ Supersedes the model line of "Areas and capture" above.
   "Your medications" (every schedule in either area, each opening its page),
   then the history of both. Pills and injections stay separate areas because
   their fields differ.
+
+## 2026-11-03 — Offline first: a local copy and an outbox
+
+- **The offline layer sits under the API client** (`lib/offline.ts` is
+  openapi-fetch's `fetch`), so screens don't know about it. A read that
+  succeeds is saved in SQLite (`lib/local.ts`); a read that can't reach the
+  server (no signal, or slower than 8 s, or a 5xx) is answered from the saved
+  copy. Home also paints its last snapshot before the network answers, so it
+  never opens empty.
+- **Changes made often wait for the connection:** logging, editing and
+  deleting entries, tasks (create, edit, done, delete), and ticking, Done and
+  snooze on schedules. Offline they go into an outbox, are applied to the
+  saved copies at once (so the screen shows them, with labels like "Done ·
+  waiting to sync"), and are sent in order when the connection returns — on
+  launch, on returning to the app, and on a retry timer. Something made
+  offline gets a temporary id; once its create reaches the server, later
+  queued changes are pointed at the real one. Anything else (editing a
+  schedule or goal, settings, Ask) needs a connection and says so.
+- **Each change carries an Idempotency-Key** (the outbox row's id). The
+  server stores the first answer per key for a week (`idempotency_keys`,
+  migration 0014) and replays it for a repeat, so a retry after a lost answer
+  never applies twice. 5xx answers aren't stored.
+- **A change the server refuses** (4xx) is dropped and named on Home, so one
+  bad change can't hold up the rest.
+- **Captures said offline** are kept with their words, read by the model
+  when the connection is back, and wait on Home ("Said while offline · 2 to
+  review") for the usual check before saving — owner's choice over filing
+  them straight to Unsorted.
+- One phone, so the last change wins; 90 days of entries are kept locally.
+- **Lock-screen actions without opening Bo were dropped:** expo-notifications
+  runs JS for a notification button in the background only on Android; on
+  iOS it needs a native extension this repo doesn't have. Done still opens
+  Bo, which now works offline.
+- **This build also carries the native parts of Apple Health
+  (@kingstinct/react-native-healthkit, read-only, NSHealthShareUsageDescription)
+  and Whisper (whisper.rn, expo-file-system for the model download)**, so the
+  features that use them can ship over the air.

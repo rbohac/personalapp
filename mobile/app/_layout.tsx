@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ActivityIndicator, Alert, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, View } from "react-native";
 import { router, Stack } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import { ensureNotificationPermission, registerReminderCategory, reminderActionO
 import { getTask, inputOf, setDone, updateTask } from "../lib/tasks";
 import { usePalette } from "../lib/theme";
 import { applyLatestUpdate } from "../lib/updates";
+import { flush, notify } from "../lib/offline";
 import { markDone, registerScheduleCategory, reportTimeZone, scheduleActionOf, setItem, snooze } from "../lib/schedules";
 
 export default function RootLayout() {
@@ -101,6 +102,15 @@ function Gate() {
     if (!signedInRef.current) return;
     for (const r of queue.current.splice(0)) void follow(r);
   }
+
+  // Send anything queued offline: at sign-in, and whenever Bo comes back to the front.
+  useEffect(() => {
+    if (!signedIn) return;
+    notify();
+    void flush();
+    const sub = AppState.addEventListener("change", (st) => st === "active" && void flush());
+    return () => sub.remove();
+  }, [signedIn]);
 
   useEffect(() => {
     if (!signedIn) return;

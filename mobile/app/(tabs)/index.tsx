@@ -13,6 +13,8 @@ import { useAuth } from "../../lib/auth";
 import { whenLabel } from "../../lib/dates";
 import { listGoals } from "../../lib/goals";
 import { listTasks } from "../../lib/tasks";
+import { pendingAll, saveSnapshot, snapshot } from "../../lib/local";
+import { clearFailed, flush, useSync } from "../../lib/offline";
 import { onChanged } from "../../lib/events";
 import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, nextDoseLabel, setItem, shortDate, weekday, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
@@ -26,10 +28,14 @@ export default function HomeScreen() {
   const c = usePalette();
   const insets = useSafeAreaInsets();
   const { state } = useAuth();
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [recent, setRecent] = useState<Entry[]>([]);
+  // The last state Home showed paints first; the network brings it up to date.
+  const [saved] = useState(() => snapshot<{ schedules: Schedule[]; goals: Goal[]; tasks: Task[]; recent: Entry[] }>("home"));
+  const [schedules, setSchedules] = useState<Schedule[]>(saved?.schedules ?? []);
+  const [goals, setGoals] = useState<Goal[]>(saved?.goals ?? []);
+  const [tasks, setTasks] = useState<Task[]>(saved?.tasks ?? []);
+  const [recent, setRecent] = useState<Entry[]>(saved?.recent ?? []);
+  const [pulling, setPulling] = useState(false);
+  const sync = useSync();
   const [icons, setIcons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,12 +74,15 @@ export default function HomeScreen() {
       setTasks(ts);
       setRecent(es);
       setError(null);
+      saveSnapshot("home", { schedules: ss, goals: gs, tasks: ts, recent: es });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load schedules.");
+      // With something already on screen, a failed refresh isn't worth a red line: the sync strip says offline.
+      if (!saved) setError(e instanceof Error ? e.message : "Couldn't load schedules.");
     } finally {
       setLoading(false);
+      setPulling(false);
     }
-  }, []);
+  }, [saved]);
 
   useFocusEffect(useCallback(() => void load(), [load]));
   useEffect(() => onChanged("schedules", () => void load()), [load]);
@@ -140,7 +149,16 @@ export default function HomeScreen() {
     <ScrollView
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={[s.body, { paddingTop: insets.top + 12 }]}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={c.accent} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={pulling}
+          onRefresh={() => {
+            setPulling(true);
+            void flush().finally(() => void load());
+          }}
+          tintColor={c.accent}
+        />
+      }
     >
       <View style={s.top}>
         <View style={{ flex: 1 }}>
@@ -169,6 +187,38 @@ export default function HomeScreen() {
           {needs > 0 ? `${needs} now` : "All caught up ✓"}
         </Text>
       </View>
+
+      {!sync.online || sync.pending > 0 || sync.syncing || sync.failed.length > 0 ? (
+        <Pressable onPress={() => (sync.failed.length ? clearFailed() : void flush())} style={[s.syncRow, { borderColor: c.line }]}>
+          <Ionicons
+            name={!sync.online ? "cloud-offline-outline" : sync.failed.length ? "alert-circle-outline" : "cloud-upload-outline"}
+            size={16}
+            color={sync.failed.length ? c.danger : c.muted}
+          />
+          <Text style={{ color: sync.failed.length ? c.danger : c.muted, fontSize: 13, flex: 1 }} numberOfLines={2}>
+            {sync.failed.length
+              ? `Couldn't sync: ${sync.failed[sync.failed.length - 1]} · tap to dismiss`
+              : !sync.online
+                ? `Offline · showing what was last synced${sync.pending ? ` · ${sync.pending} change${sync.pending === 1 ? "" : "s"} waiting` : ""}`
+                : sync.syncing
+                  ? "Syncing…"
+                  : `${sync.pending} change${sync.pending === 1 ? "" : "s"} waiting to sync · tap to send`}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {sync.toReview > 0 ? (
+        <Pressable
+          onPress={() => {
+            const next = pendingAll().find((p) => p.result);
+            if (next) router.push({ pathname: "/capture", params: { pending: next.id } });
+          }}
+          style={[s.strip, { backgroundColor: c.card, borderColor: c.accent }]}
+        >
+          <Text style={{ color: c.ink, fontSize: 16 }}>Said while offline</Text>
+          <Text style={{ color: c.accent, fontSize: 16, fontWeight: "600" }}>{sync.toReview} to review</Text>
+        </Pressable>
+      ) : null}
 
       {error ? <Text style={{ color: c.danger, fontSize: 14 }}>{error}</Text> : null}
 
@@ -512,6 +562,7 @@ const s = StyleSheet.create({
   track: { height: 8, borderRadius: 4, overflow: "hidden" },
   fill: { height: 8, borderRadius: 4 },
   top: { flexDirection: "row", alignItems: "flex-end", gap: 12, marginBottom: 4 },
+  syncRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 },
   strip: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14 },
   row2: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
   summary: { flexDirection: "row", alignItems: "center", gap: 10 },
