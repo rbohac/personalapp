@@ -4,7 +4,7 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-spe
 import { getRecognizerMode, recognizerHints } from "./vocabulary";
 
 /** Stop after this long with no new words: long enough for a pause to think. */
-export const SILENCE_MS = 3000;
+export const SILENCE_MS = 3500;
 /** Give up if nothing at all is heard for this long after starting. */
 const NOTHING_HEARD_MS = 8000;
 /** iOS caps a recognition session at about a minute; stop just before. */
@@ -27,6 +27,7 @@ export function useDictation(onText: (text: string) => void) {
   // Speech events are global; only react to a session this hook started.
   const mine = useRef(false);
   const settled = useRef(""); // text from finished segments of this session
+  const segment = useRef(""); // the segment being heard now, as last reported
   const quiet = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cap = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -55,9 +56,24 @@ export function useDictation(onText: (text: string) => void) {
     if (!mine.current) return;
     const text = e.results[0]?.transcript?.trim();
     if (!text) return;
-    // Cumulative transcript (it repeats what's settled), or a fresh segment after a pause.
-    const whole = !settled.current || text.toLowerCase().startsWith(settled.current.toLowerCase()) ? text : `${settled.current} ${text}`;
-    if (e.isFinal) settled.current = whole;
+    let whole: string;
+    if (settled.current && text.toLowerCase().startsWith(settled.current.toLowerCase())) {
+      // A cumulative transcript: it repeats everything said so far.
+      whole = text;
+      segment.current = "";
+      if (e.isFinal) settled.current = text;
+    } else {
+      // A segment. iOS 18 can start a new one after a pause without ever
+      // marking the last one final; when this one isn't a revision of the
+      // last, keep the last before moving on, so no words are dropped.
+      if (segment.current && !sameSegment(segment.current, text)) settled.current = join(settled.current, segment.current);
+      segment.current = text;
+      whole = join(settled.current, text);
+      if (e.isFinal) {
+        settled.current = whole;
+        segment.current = "";
+      }
+    }
     onText(whole);
     stopSoon(SILENCE_MS);
   });
@@ -80,6 +96,7 @@ export function useDictation(onText: (text: string) => void) {
     const [hints, mode] = await Promise.all([recognizerHints(), getRecognizerMode()]);
     mine.current = true;
     settled.current = "";
+    segment.current = "";
     stopSoon(NOTHING_HEARD_MS);
     cap.current = setTimeout(() => {
       if (mine.current) ExpoSpeechRecognitionModule.stop();
@@ -101,4 +118,16 @@ export function useDictation(onText: (text: string) => void) {
   }, []);
 
   return { listening, error, start, stop };
+}
+
+const join = (a: string, b: string) => (a ? `${a} ${b}` : b);
+const firstWord = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(" ")[0] ?? "";
+
+/**
+ * Is `next` the same segment as `prev`, revised, rather than a new one? A
+ * revision starts the same way or is about as long ("to my" → "took my BP");
+ * a new segment after a pause starts short and different ("pulse").
+ */
+function sameSegment(prev: string, next: string): boolean {
+  return firstWord(prev) === firstWord(next) || next.toLowerCase().startsWith(prev.slice(0, 6).toLowerCase()) || next.length >= prev.length * 0.6;
 }
