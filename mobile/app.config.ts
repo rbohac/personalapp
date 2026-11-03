@@ -58,11 +58,13 @@ const config: ExpoConfig = {
       },
     ],
     // Reads weight, steps and sleep from Apple Health when the owner asks; never writes.
+    // Apple still requires the update purpose string, because the library can
+    // write (ITMS-90683 rejected build 9 without it).
     [
       "@kingstinct/react-native-healthkit",
       {
         NSHealthShareUsageDescription: "Bo reads your weight, steps and sleep from Apple Health so you don't have to log them by hand.",
-        NSHealthUpdateUsageDescription: false,
+        NSHealthUpdateUsageDescription: "Bo only reads from Apple Health. It never adds to or changes your Health data.",
         background: false,
       },
     ],
