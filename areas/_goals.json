@@ -40,6 +40,17 @@
       "target": 200,
       "targetFrom": "weight.pounds",
       "period": "day"
+    },
+    {
+      "title": "Nights without snacking",
+      "area": "sleep",
+      "measure": "days",
+      "target": 7,
+      "excludeField": "snack",
+      "excludeValues": [
+        "yes",
+        "carbs"
+      ]
     }
   ]
 }

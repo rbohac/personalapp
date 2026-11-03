@@ -31,6 +31,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<Bo.Api.Schedules.ScheduleStore>();
 builder.Services.AddHttpClient<Bo.Api.Schedules.ExpoPush>();
 builder.Services.AddSingleton<Bo.Api.Goals.GoalStore>();
+builder.Services.AddSingleton<Bo.Api.Ask.AskService>();
 builder.Services.AddHostedService<Bo.Api.Schedules.Nudger>();
 
 var app = builder.Build();
@@ -58,5 +59,6 @@ app.MapAiUsageEndpoints();
 app.MapVocabularyEndpoints();
 app.MapScheduleEndpoints();
 app.MapGoalEndpoints();
+app.MapAskTrendsEndpoints();
 
 app.Run();

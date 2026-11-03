@@ -5,6 +5,7 @@ import { router, Tabs, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { Ionicons } from "@expo/vector-icons";
 
 import { AreaIcon } from "../../components/AreaIcon";
+import { LastNight } from "../../components/LastNight";
 import { useRemindPicker } from "../../components/RemindPicker";
 import type { Entry, Goal, ItemMark, Schedule, Task } from "../../lib/api";
 import { getAreas, listEntries } from "../../lib/areas";
@@ -130,6 +131,9 @@ export default function HomeScreen() {
     + tasks.filter((t) => (t.remindAt ?? t.dueAt) && new Date((t.remindAt ?? t.dueAt)!).getTime() < Date.now()).length;
   const name = state.status === "signedIn" ? (state.user.name ?? "").split(" ")[0] : "";
   const hour = new Date().getHours();
+  // The morning card shows from 4 am until last night is logged.
+  const todayKey = new Date().toDateString();
+  const sleepPending = hour >= 4 && !loading && !recent.some((e) => e.area === "sleep" && new Date(e.at).toDateString() === todayKey);
   const greeting = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
 
   return (
@@ -148,7 +152,13 @@ export default function HomeScreen() {
             {name ? `, ${name}` : ""}
           </Text>
         </View>
-        <Pressable onPress={add} hitSlop={10} accessibilityLabel="Add a schedule or goal">
+        <Pressable onPress={() => router.push("/ask")} hitSlop={8} accessibilityLabel="Ask Bo">
+          <Ionicons name="chatbubble-ellipses-outline" size={27} color={c.accent} />
+        </Pressable>
+        <Pressable onPress={() => router.push("/trends")} hitSlop={8} accessibilityLabel="Trends">
+          <Ionicons name="stats-chart-outline" size={26} color={c.accent} />
+        </Pressable>
+        <Pressable onPress={add} hitSlop={8} accessibilityLabel="Add a schedule or goal">
           <Ionicons name="add-circle-outline" size={30} color={c.accent} />
         </Pressable>
       </View>
@@ -161,6 +171,8 @@ export default function HomeScreen() {
       </View>
 
       {error ? <Text style={{ color: c.danger, fontSize: 14 }}>{error}</Text> : null}
+
+      {sleepPending ? <LastNight c={c} onSaved={() => void load()} /> : null}
 
       {now.length > 0 ? <Heading c={c} text="NOW" /> : null}
       {now.map((sch) => (
