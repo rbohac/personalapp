@@ -43,6 +43,7 @@ Migrator.Run(app.Services.GetRequiredService<Db>().ConnectionString, app.Logger)
 app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<Bo.Api.Sync.Idempotency>();
 
 // The contract the mobile app's client is generated from (npm run api:types).
 app.MapOpenApi();
