@@ -24,6 +24,7 @@ public static class ScheduleEndpoints
         g.MapPost("/{id:guid}/done", Done);
         g.MapPost("/{id:guid}/snooze", Snooze);
         g.MapPost("/{id:guid}/items", SetItem);
+        g.MapGet("/{id:guid}/history", History);
         g.MapPost("/{id:guid}/keep-day", KeepDay);
         g.MapPost("/{id:guid}/accept-day", AcceptDay);
 
@@ -112,6 +113,38 @@ public static class ScheduleEndpoints
         var now = time.GetUtcNow().UtcDateTime;
         if (await store.LogDoseAsync(conn, s, now) is { } problem) return Invalid(problem);
         return TypedResults.Ok(await Fresh(conn, user, id, await ScheduleStore.ClockAsync(conn, user), now));
+    }
+
+    /// <summary>
+    /// The doses that count for this schedule, newest first: its area's
+    /// entries naming its medication (or, for a daily list, naming one of
+    /// its items or the list), not "ran out" or "refilled".
+    /// </summary>
+    private static async Task<Results<Ok<EntryDto[]>, NotFound>> History(Guid id, HttpContext http, ScheduleStore store, Bo.Api.Areas.AreaCatalog catalog, int limit = 100)
+    {
+        var user = http.User.UserId();
+        await using var conn = await store.Db.OpenAsync();
+        if (await ScheduleStore.GetAsync(conn, user, id) is not { } s) return TypedResults.NotFound();
+        var names = s.ByItem ? s.Items.Select(ScheduleLogic.Name).Append(s.MatchText ?? "").Where(n => n.Length >= 3).ToArray() : [];
+        var rows = await conn.QueryAsync<(Guid Id, string Area, DateTime At, string Data, string Source, string? Raw, DateTime CreatedAt)>(
+            """
+            select id, area, at, data::text, source, raw, created_at from entries
+            where user_id = @user and area = @area
+              and coalesce(data->>'event', 'taken') = 'taken'
+              and (
+                (@byItem and exists (select 1 from unnest(@names::text[]) n
+                   where data->>'medication' ilike '%' || n || '%' or n ilike '%' || (data->>'medication') || '%'))
+                or (not @byItem and (@match::text is null or data->>'medication' ilike '%' || @match || '%')))
+            order by at desc limit @limit
+            """,
+            new { user, area = s.Area, byItem = s.ByItem, names, match = s.MatchText, limit = Math.Clamp(limit, 1, 500) });
+        var area = catalog.Find(s.Area);
+        return TypedResults.Ok(rows.Select(r =>
+        {
+            var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(r.Data) ?? [];
+            var summary = area is null ? r.Area : Bo.Api.Areas.AreaCatalog.Summarize(area, data.ToDictionary(kv => kv.Key, kv => (object?)kv.Value));
+            return new EntryDto(r.Id, r.Area, r.At, data, summary, r.Source, r.Raw, r.CreatedAt);
+        }).ToArray());
     }
 
     /// <summary>Tick one item of a daily list: taken, open (untick), skipped, or later with a time to remind.</summary>

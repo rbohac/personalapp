@@ -1,59 +1,60 @@
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { router, Stack, useLocalSearchParams } from "expo-router";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 
-import type { Area, ScheduleInput } from "../../lib/api";
-import { getAreas } from "../../lib/areas";
-import { createSchedule, deleteSchedule, inputOf, listSchedules, siteLabel, updateSchedule } from "../../lib/schedules";
-
-const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
-const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+import type { Entry, Schedule } from "../../lib/api";
+import { whenLabel } from "../../lib/dates";
+import { onChanged } from "../../lib/events";
+import { cadenceLabel, listSchedules, markDone, nextDoseLabel, scheduleHistory, shortDate } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
-const REPEATS = [
-  { label: "Daily", days: 1 },
-  { label: "Weekly", days: 7 },
-  { label: "Every 2 weeks", days: 14 },
-];
-
-const pad = (n: number) => String(n).padStart(2, "0");
-const isoDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const fromIsoDay = (iso: string | null | undefined) => {
-  if (!iso) return new Date();
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
-};
-
-/** Add or edit a schedule. id "new" adds one. Saves the whole form. */
-export default function ScheduleScreen() {
+/**
+ * One schedule as you'd look at it: where it stands, the next dose (and
+ * side), and every time it was taken. Editing is behind Edit in the corner —
+ * something done rarely.
+ */
+export default function ScheduleView() {
   const c = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const isNew = id === "new";
-  const [form, setForm] = useState<ScheduleInput | null>(
-    isNew ? { title: "", area: "medications", everyDays: 1, at: "08:00", match: null, nextDue: isoDay(new Date()), items: [], paused: false, rotation: [], weekdays: [], dose: "" } : null,
-  );
-  const [itemsText, setItemsText] = useState("");
-  const [areas, setAreas] = useState<Area[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [sch, setSch] = useState<Schedule | null>(null);
+  const [history, setHistory] = useState<Entry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    getAreas().then((as) => setAreas(as.filter((a) => a.kind === "log"))).catch(() => undefined);
-    if (isNew) return;
-    listSchedules()
-      .then((all) => {
-        const s = all.find((x) => x.id === id);
-        if (!s) throw new Error("That schedule is gone.");
-        setForm(inputOf(s));
-        setItemsText(s.items.join("\n"));
-      })
-      .catch((e) => {
-        Alert.alert("Couldn't open it", e instanceof Error ? e.message : "");
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [all, h] = await Promise.all([listSchedules(), scheduleHistory(id)]);
+      const s = all.find((x) => x.id === id);
+      if (!s) {
         router.back();
-      });
-  }, [id, isNew]);
+        return;
+      }
+      setSch(s);
+      setHistory(h);
+    } catch (e) {
+      Alert.alert("Couldn't load it", e instanceof Error ? e.message : "");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
-  if (!form) {
+  useFocusEffect(useCallback(() => void load(), [load]));
+  useEffect(() => onChanged("entries", () => void load()), [load]);
+  useEffect(() => onChanged("schedules", () => void load()), [load]);
+
+  async function done() {
+    setBusy(true);
+    try {
+      await markDone(id);
+    } catch (e) {
+      Alert.alert("Not logged", e instanceof Error ? e.message : "The server didn't take it.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!sch) {
     return (
       <View style={[s.center, { backgroundColor: c.bg }]}>
         <ActivityIndicator color={c.accent} />
@@ -61,237 +62,98 @@ export default function ScheduleScreen() {
     );
   }
 
-  const set = (patch: Partial<ScheduleInput>) => setForm({ ...form, ...patch });
-  const every = Number(form.everyDays);
-  const [h, m] = form.at.split(":").map(Number);
-  // Sites this area can rotate through (shots), in the area's own order.
-  const sites = areas.find((a) => a.id === form.area)?.fields?.find((f) => f.key === "site")?.options?.filter((o) => o !== "other") ?? [];
-  const atDate = new Date();
-  atDate.setHours(h, m, 0, 0);
+  const st = sch.status.state;
+  const tone = st === "overdue" ? c.danger : st === "due" ? c.accent : c.ink;
+  const next = nextDoseLabel(sch);
+  const canLog = st !== "done" && st !== "paused" && st !== "finished";
+  const byItem = sch.items.length > 0 && Number(sch.everyDays) === 1;
+  const days = byItem ? groupByDay(history) : [];
 
-  async function save() {
-    if (!form) return;
-    setSaving(true);
-    const body: ScheduleInput = {
-      ...form,
-      title: form.title.trim(),
-      match: form.match?.trim() || null,
-      items: itemsText.split("\n").map((i) => i.trim()).filter(Boolean),
-      nextDue: Number(form.everyDays) > 1 ? form.nextDue ?? isoDay(new Date()) : null,
-      rotation: form.rotation ?? [],
-      weekdays: Number(form.everyDays) === 1 ? (form.weekdays ?? []).map(Number) : [],
-      dose: (form.dose ?? "").trim(),
-    };
-    try {
-      if (isNew) await createSchedule(body);
-      else await updateSchedule(id, body);
-      router.back();
-    } catch (e) {
-      Alert.alert("Not saved", e instanceof Error ? e.message : "The server didn't take it.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function confirmDelete() {
-    Alert.alert(`Delete "${form?.title}"?`, "Its nudges stop. Entries you've logged stay.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteSchedule(id);
-            router.back();
-          } catch (e) {
-            Alert.alert("Not deleted", e instanceof Error ? e.message : "");
-          }
-        },
-      },
-    ]);
-  }
-
-  const canSave = !saving && form.title.trim().length > 0;
   return (
-    <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+    <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body} refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={c.accent} />}>
       <Stack.Screen
         options={{
-          title: isNew ? "New schedule" : "Schedule",
+          title: sch.title,
           headerRight: () => (
-            <Pressable onPress={save} disabled={!canSave}>
-              <Text style={{ color: c.accent, fontSize: 17, fontWeight: "600", opacity: canSave ? 1 : 0.4 }}>Save</Text>
+            <Pressable onPress={() => router.push({ pathname: "/schedule/edit/[id]", params: { id } })} hitSlop={10}>
+              <Text style={{ color: c.accent, fontSize: 17 }}>Edit</Text>
             </Pressable>
           ),
         }}
       />
 
-      <Label c={c} text="NAME" />
-      <TextInput
-        value={form.title}
-        onChangeText={(title) => set({ title })}
-        placeholder="e.g. Fish oil"
-        placeholderTextColor={c.muted}
-        style={[s.field, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
-      />
-
-      <Label c={c} text="REPEATS" />
-      <View style={s.chips}>
-        {REPEATS.map((r) => (
-          <Chip key={r.days} c={c} label={r.label} on={every === r.days} onPress={() => set({ everyDays: r.days })} />
-        ))}
+      <View style={[s.card, { backgroundColor: c.card, borderColor: c.line }]}>
+        <Text style={{ color: tone, fontSize: 20, fontWeight: "700" }}>{sch.status.label}</Text>
+        <Line c={c} label="Repeats" value={cadenceLabel(sch)} />
+        {sch.nextDue ? <Line c={c} label="Next due" value={shortDate(sch.nextDue)} /> : null}
+        {next ? <Line c={c} label="Next dose" value={next} /> : null}
+        <Line c={c} label="Last taken" value={sch.lastDoneAt ? whenLabel(sch.lastDoneAt) : "Not logged yet"} />
+        {canLog ? (
+          <Pressable onPress={() => void done()} disabled={busy} style={[s.button, { backgroundColor: c.accent, opacity: busy ? 0.5 : 1 }]}>
+            <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>
+              {byItem ? "Took all" : st === "upcoming" ? "Log one now" : "Done"}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
-      {every === 1 ? (
-        <View style={s.chips}>
-          {DAYS.map((d, i) => {
-            const days = (form.weekdays ?? []).map(Number);
-            const on = days.length === 0 || days.includes(i);
-            return (
-              <Pressable
-                key={i}
-                accessibilityLabel={DAY_NAMES[i]}
-                onPress={() => {
-                  const all = days.length === 0 ? [0, 1, 2, 3, 4, 5, 6] : days;
-                  const next = on ? all.filter((x) => x !== i) : [...all, i];
-                  set({ weekdays: next.length === 7 ? [] : next.sort((a, b) => a - b) });
-                }}
-                style={[s.day, { borderColor: on ? c.accent : c.line, backgroundColor: on ? c.accent : c.card }]}
-              >
-                <Text style={{ color: on ? c.accentInk : c.muted, fontSize: 15, fontWeight: "600" }}>{d}</Text>
+
+      <Text style={[s.heading, { color: c.muted }]}>HISTORY</Text>
+      <View style={[s.card, { backgroundColor: c.card, borderColor: c.line, paddingVertical: 4, gap: 0 }]}>
+        {history.length === 0 ? <Text style={{ color: c.muted, fontSize: 15, paddingVertical: 10 }}>Nothing logged yet.</Text> : null}
+        {byItem
+          ? days.map((d) => (
+              <View key={d.day} style={[s.row, { borderBottomColor: c.line }]}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: c.ink, fontSize: 15 }}>{d.count} taken</Text>
+                  <Text style={{ color: c.muted, fontSize: 13 }} numberOfLines={2}>{d.names.join(", ")}</Text>
+                </View>
+                <Text style={{ color: c.muted, fontSize: 13 }}>{d.label}</Text>
+              </View>
+            ))
+          : history.map((e) => (
+              <Pressable key={e.id} onPress={() => router.push({ pathname: "/entry/[id]", params: { id: e.id } })} style={[s.row, { borderBottomColor: c.line }]}>
+                <Text style={{ color: c.ink, fontSize: 15, flex: 1 }} numberOfLines={1}>{e.summary.replace(/^Taken · /, "")}</Text>
+                <Text style={{ color: c.muted, fontSize: 13 }}>{whenLabel(e.at)}</Text>
               </Pressable>
-            );
-          })}
-        </View>
-      ) : (
-        <Text style={{ color: c.muted, fontSize: 13 }}>Counted from the last dose: a late one moves the next, and Today offers to keep the old day.</Text>
-      )}
-
-      <View style={[s.pickRow, { borderColor: c.line, backgroundColor: c.card }]}>
-        <Text style={{ color: c.ink, fontSize: 16 }}>Time</Text>
-        <DateTimePicker
-          value={atDate}
-          mode="time"
-          display="compact"
-          accentColor={c.accent}
-          onChange={(_, d) => d && set({ at: `${pad(d.getHours())}:${pad(d.getMinutes())}` })}
-        />
+            ))}
       </View>
-      {every > 1 ? (
-        <View style={[s.pickRow, { borderColor: c.line, backgroundColor: c.card }]}>
-          <Text style={{ color: c.ink, fontSize: 16 }}>Next due</Text>
-          <DateTimePicker
-            value={fromIsoDay(form.nextDue)}
-            mode="date"
-            display="compact"
-            accentColor={c.accent}
-            onChange={(_, d) => d && set({ nextDue: isoDay(d) })}
-          />
-        </View>
-      ) : null}
-
-      <Label c={c} text="DOSE (OPTIONAL)" />
-      <TextInput
-        value={form.dose ?? ""}
-        onChangeText={(dose) => set({ dose })}
-        placeholder="e.g. 30 units"
-        placeholderTextColor={c.muted}
-        style={[s.field, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
-      />
-      <Text style={{ color: c.muted, fontSize: 13 }}>Logging a different dose (“tirzepatide 35 units”) updates this by itself.</Text>
-
-      <Label c={c} text="WHAT TO TAKE (ONE PER LINE)" />
-      <TextInput
-        value={itemsText}
-        onChangeText={setItemsText}
-        placeholder={"Vyvanse (skip some days)\nVitamin D 2000 IU"}
-        placeholderTextColor={c.muted}
-        multiline
-        style={[s.field, s.multi, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
-      />
-
-      <Label c={c} text="COUNTS AS DONE WHEN YOU LOG" />
-      <View style={s.chips}>
-        {areas.map((a) => (
-          <Chip key={a.id} c={c} label={a.name} on={form.area === a.id} onPress={() => set({ area: a.id, rotation: [] })} />
-        ))}
-      </View>
-      <TextInput
-        value={form.match ?? ""}
-        onChangeText={(match) => set({ match })}
-        placeholder="…naming (optional), e.g. tirzepatide"
-        placeholderTextColor={c.muted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={[s.field, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
-      />
-      <Text style={{ color: c.muted, fontSize: 13 }}>
-        {form.match?.trim() ? `Any ${areaName(areas, form.area)} entry naming "${form.match.trim()}".` : `Any ${areaName(areas, form.area)} entry.`}
-      </Text>
-
-      {sites.length > 0 ? (
-        <>
-          <Label c={c} text="ALTERNATE SITES (TAP IN ORDER)" />
-          <View style={s.chips}>
-            {sites.map((site) => {
-              const at = (form.rotation ?? []).indexOf(site);
-              return (
-                <Chip
-                  key={site}
-                  c={c}
-                  label={at >= 0 ? `${at + 1}. ${siteLabel(site)}` : siteLabel(site)}
-                  on={at >= 0}
-                  onPress={() => {
-                    const r = form.rotation ?? [];
-                    set({ rotation: at >= 0 ? r.filter((x) => x !== site) : [...r, site] });
-                  }}
-                />
-              );
-            })}
-          </View>
-          <Text style={{ color: c.muted, fontSize: 13 }}>
-            {(form.rotation ?? []).length > 1
-              ? "Each reminder names the site after the one you last logged. Saying just “left” or “right” is enough."
-              : "Pick two or more to alternate."}
-          </Text>
-        </>
-      ) : null}
-
-      <View style={[s.pickRow, { borderColor: c.line, backgroundColor: c.card }]}>
-        <Text style={{ color: c.ink, fontSize: 16 }}>Paused</Text>
-        <Switch value={form.paused} onValueChange={(paused) => set({ paused })} />
-      </View>
-
-      {!isNew ? (
-        <Pressable onPress={confirmDelete} style={[s.delete, { borderColor: c.line, backgroundColor: c.card }]}>
-          <Text style={{ color: c.danger, fontSize: 16, fontWeight: "500" }}>Delete schedule</Text>
-        </Pressable>
-      ) : null}
     </ScrollView>
   );
 }
 
-const areaName = (areas: Area[], id: string) => areas.find((a) => a.id === id)?.name.toLowerCase() ?? id;
-
-function Label({ c, text }: { c: Palette; text: string }) {
-  return <Text style={[s.label, { color: c.muted }]}>{text}</Text>;
+/** A daily list's history, one row per day: how many were taken and which. */
+function groupByDay(entries: Entry[]) {
+  const out: { day: string; label: string; count: number; names: string[] }[] = [];
+  for (const e of entries) {
+    const d = new Date(e.at);
+    const day = d.toDateString();
+    let row = out.find((r) => r.day === day);
+    if (!row) {
+      row = { day, label: d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }), count: 0, names: [] };
+      out.push(row);
+    }
+    row.count++;
+    const name = typeof e.data.medication === "string" ? e.data.medication : e.summary;
+    if (!row.names.includes(name)) row.names.push(name);
+  }
+  return out;
 }
 
-function Chip({ c, label, on, onPress }: { c: Palette; label: string; on: boolean; onPress: () => void }) {
+function Line({ c, label, value }: { c: Palette; label: string; value: string }) {
   return (
-    <Pressable onPress={onPress} style={[s.chip, { borderColor: on ? c.accent : c.line }]}>
-      <Text style={{ color: on ? c.accent : c.ink, fontSize: 14 }}>{label}</Text>
-    </Pressable>
+    <View style={s.line}>
+      <Text style={{ color: c.muted, fontSize: 15 }}>{label}</Text>
+      <Text style={{ color: c.ink, fontSize: 15, flexShrink: 1, textAlign: "right" }}>{value}</Text>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  body: { padding: 16, gap: 8, paddingBottom: 48 },
-  label: { fontSize: 12, fontWeight: "600", paddingHorizontal: 4, marginTop: 10 },
-  field: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
-  multi: { minHeight: 90, textAlignVertical: "top" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
-  day: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  pickRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 },
-  delete: { marginTop: 24, borderWidth: 1, borderRadius: 12, paddingVertical: 13, alignItems: "center" },
+  body: { padding: 16, gap: 10, paddingBottom: 40 },
+  card: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 10 },
+  line: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  button: { height: 46, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 4 },
+  heading: { fontSize: 12, fontWeight: "600", paddingHorizontal: 4, marginTop: 8 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
 });

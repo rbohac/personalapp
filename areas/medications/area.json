@@ -9,5 +9,6 @@
     { "key": "notes", "label": "Notes", "type": "text" }
   ],
   "summary": "{medication} · {dose}",
+  "related": ["shots"],
   "patterns": []
 }

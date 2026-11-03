@@ -14,6 +14,8 @@ public sealed record AreaDefinition
     public AreaList[] Lists { get; init; } = [];
     public string Summary { get; init; } = "";
     public string[] Patterns { get; init; } = [];
+    /// <summary>Other areas shown alongside this one in the app (Medications shows Shots too).</summary>
+    public string[] Related { get; init; } = [];
     /// <summary>The folder's README.md, verbatim. Read by the capture parser and shown in the app.</summary>
     public string Guide { get; init; } = "";
 }

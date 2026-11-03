@@ -1499,6 +1499,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedules/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number | string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntryDto"][];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedules/{id}/keep-day": {
         parameters: {
             query?: never;
@@ -1802,6 +1848,7 @@ export interface components {
             lists?: components["schemas"]["AreaList"][];
             summary?: string;
             patterns?: string[];
+            related?: string[];
             guide?: string;
         };
         AreaField: {

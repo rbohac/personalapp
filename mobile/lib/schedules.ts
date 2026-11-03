@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 
-import { api, must, type Schedule, type ScheduleInput } from "./api";
+import { api, must, type Entry, type Schedule, type ScheduleInput } from "./api";
 import { changed } from "./events";
 
 /**
@@ -28,6 +28,11 @@ export async function reportTimeZone(): Promise<void> {
 function edited(entries = false) {
   changed("schedules");
   if (entries) changed("entries");
+}
+
+/** The doses that count for a schedule, newest first. */
+export async function scheduleHistory(id: string): Promise<Entry[]> {
+  return must(await api.GET("/schedules/{id}/history", { params: { path: { id }, query: { limit: 200 } } }));
 }
 
 export async function createSchedule(input: ScheduleInput): Promise<Schedule> {
