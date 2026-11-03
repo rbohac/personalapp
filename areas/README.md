@@ -54,6 +54,9 @@ No migration, no app release. A new area is two files.
   // How an entry reads in a list. Segments are separated by " · "; a segment
   // with a field that has no value is dropped.
   "summary": "{done} · {minutes} min · {distance} mi",
+  // Optional: other areas the app shows alongside this one (Medications
+  // lists Shots too, so everything taken is in one place).
+  "related": [],
   // Optional fallback patterns (case-insensitive .NET regex, named groups =
   // field keys), used only when the model can't be reached. They read the
   // numbers and nothing else, so a time or an arm said alongside is lost.

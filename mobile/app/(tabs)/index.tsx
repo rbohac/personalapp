@@ -91,7 +91,7 @@ export default function HomeScreen() {
 
   function add() {
     ActionSheetIOS.showActionSheetWithOptions({ options: ["New schedule", "New goal", "Cancel"], cancelButtonIndex: 2 }, (i) => {
-      if (i === 0) router.push({ pathname: "/schedule/[id]", params: { id: "new" } });
+      if (i === 0) router.push({ pathname: "/schedule/edit/[id]", params: { id: "new" } });
       if (i === 1) router.push({ pathname: "/goal/[id]", params: { id: "new" } });
     });
   }

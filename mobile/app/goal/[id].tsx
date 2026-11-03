@@ -17,6 +17,8 @@ export default function GoalScreen() {
   const [excludeText, setExcludeText] = useState("");
   const [areas, setAreas] = useState<Area[]>([]);
   const [saving, setSaving] = useState(false);
+  // What was loaded, to tell a look from an edit: Close until something changes.
+  const [loaded, setLoaded] = useState<string | null>(null);
 
   useEffect(() => {
     getAreas().then((as) => setAreas(as.filter((a) => a.kind === "log"))).catch(() => undefined);
@@ -28,6 +30,7 @@ export default function GoalScreen() {
         setForm(goalInputOf(g));
         setTargetText(String(Number(g.target)));
         setExcludeText(g.excludeValues.join(", "));
+        setLoaded(JSON.stringify({ f: goalInputOf(g), t: String(Number(g.target)), x: g.excludeValues.join(", ") }));
       })
       .catch((e) => {
         Alert.alert("Couldn't open it", e instanceof Error ? e.message : "");
@@ -93,16 +96,28 @@ export default function GoalScreen() {
   }
 
   const canSave = !saving && form.title.trim().length > 0;
+  const changed = isNew || loaded !== JSON.stringify({ f: form, t: targetText, x: excludeText });
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
       <Stack.Screen
         options={{
           title: isNew ? "New goal" : "Goal",
-          headerRight: () => (
-            <Pressable onPress={save} disabled={!canSave}>
-              <Text style={{ color: c.accent, fontSize: 17, fontWeight: "600", opacity: canSave ? 1 : 0.4 }}>Save</Text>
-            </Pressable>
-          ),
+          headerLeft: () =>
+            changed ? (
+              <Pressable onPress={() => router.back()} hitSlop={10}>
+                <Text style={{ color: c.muted, fontSize: 17 }}>Cancel</Text>
+              </Pressable>
+            ) : null,
+          headerRight: () =>
+            changed ? (
+              <Pressable onPress={save} disabled={!canSave} hitSlop={10}>
+                <Text style={{ color: c.accent, fontSize: 17, fontWeight: "600", opacity: canSave ? 1 : 0.4 }}>Save</Text>
+              </Pressable>
+            ) : (
+              <Pressable onPress={() => router.back()} hitSlop={10}>
+                <Text style={{ color: c.accent, fontSize: 17, fontWeight: "600" }}>Close</Text>
+              </Pressable>
+            ),
         }}
       />
 

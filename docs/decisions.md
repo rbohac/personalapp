@@ -355,3 +355,17 @@ Supersedes the model line of "Areas and capture" above.
   items skipped, shots by medication, and sleep (clean nights, carb nights,
   CPAP, time up). Plain-view bar charts, so it ships over the air.
 - Ask and Trends open from two icons at the top of Home.
+
+## 2026-11-03 — A schedule is something you look at; editing is rare
+
+- Tapping a schedule opens its page — status, next due, next dose and side,
+  last taken, a Done button, and its **history** (`GET
+  /schedules/{id}/history`: the area's entries naming it; for a daily list,
+  one row per day with what was taken). **Edit** is in the corner and opens
+  the editor, which, like the entry screen, shows Close until something
+  changes, then Cancel and Save. The goal editor works the same way.
+- **An area can name related areas** (`related` in area.json). Medications
+  names Shots, so its screen lists everything taken in one place: first
+  "Your medications" (every schedule in either area, each opening its page),
+  then the history of both. Pills and injections stay separate areas because
+  their fields differ.

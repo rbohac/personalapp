@@ -122,7 +122,7 @@ function Gate() {
 
   return (
     <Stack screenOptions={{ headerTintColor: c.accent, headerStyle: { backgroundColor: c.bg }, headerTitleStyle: { color: c.ink }, contentStyle: { backgroundColor: c.bg } }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false, title: "Home" }} />
       <Stack.Screen name="task/[id]" options={{ presentation: "modal", title: "Task" }} />
       <Stack.Screen name="area/[id]" options={{ title: "" }} />
       <Stack.Screen name="entry/[id]" options={{ presentation: "modal", title: "Entry" }} />
@@ -130,7 +130,8 @@ function Gate() {
       <Stack.Screen name="ai-usage/[id]" options={{ title: "Call" }} />
       <Stack.Screen name="vocabulary/index" options={{ title: "Words" }} />
       <Stack.Screen name="vocabulary/[id]" options={{ title: "Word" }} />
-      <Stack.Screen name="schedule/[id]" options={{ presentation: "modal", title: "Schedule" }} />
+      <Stack.Screen name="schedule/[id]" options={{ title: "" }} />
+      <Stack.Screen name="schedule/edit/[id]" options={{ presentation: "modal", title: "Edit schedule" }} />
       <Stack.Screen name="goal/[id]" options={{ presentation: "modal", title: "Goal" }} />
       <Stack.Screen name="capture" options={{ presentation: "modal", title: "Log" }} />
       <Stack.Screen name="ask" options={{ title: "Ask Bo" }} />
