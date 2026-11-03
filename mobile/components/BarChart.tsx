@@ -13,7 +13,7 @@ export type Bar = { key: string; value: number | string; label: string };
  * and drills into it.
  */
 export function BarChart({
-  bars, c, selected, onSelect, format, height = 140,
+  bars, c, selected, onSelect, format, height = 140, empty = "No spend yet",
 }: {
   bars: Bar[];
   c: Palette;
@@ -21,6 +21,8 @@ export function BarChart({
   onSelect: (key: string | null) => void;
   format: (v: number) => string;
   height?: number;
+  /** What the scale says when every bar is zero. */
+  empty?: string;
 }) {
   const max = Math.max(...bars.map((b) => num(b.value)), 0);
   const ticks = [0, Math.floor((bars.length - 1) / 2), bars.length - 1];
@@ -28,7 +30,7 @@ export function BarChart({
   return (
     <View>
       <View style={s.scaleRow}>
-        <Text style={[s.scale, { color: c.muted }]}>{max > 0 ? format(max) : "No spend yet"}</Text>
+        <Text style={[s.scale, { color: c.muted }]}>{max > 0 ? format(max) : empty}</Text>
       </View>
       <View style={[s.plot, { height, borderTopColor: c.track, borderBottomColor: c.muted }]}>
         {bars.map((b) => {

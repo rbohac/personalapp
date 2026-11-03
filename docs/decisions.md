@@ -329,3 +329,29 @@ Supersedes the model line of "Areas and capture" above.
 - Migration 0012 turns the owner's Sermorelin schedule into Mon–Fri, 15
   units (0.15 ml), belly rotation, paired with tirzepatide; tirzepatide gets
   a 30-unit dose.
+
+## 2026-11-03 — Last night, Ask Bo, Trends
+
+- **Sleep is an area** (`areas/sleep`), one entry per night dated the morning
+  after: bed and up times, time up in the night (periods and total minutes),
+  overnight snack (none / yes / carbs), CPAP hours and score, yesterday's nap.
+  Home shows a **Last night** card from 4 am until the night is logged — one
+  line until opened, all taps and two number boxes, no 1–10 scale. Voice works
+  too. No morning push yet; the card is the prompt.
+- **Nights without snacking** is a weekly goal (days with a sleep entry whose
+  snack isn't yes or carbs, target 7), using the existing exclude rule —
+  migration 0013 adds it for the owner.
+- **Ask Bo** (`POST /ask`): a question in plain words, answered by the same
+  Haiku model from the last 90 days of entries (one compact line each, at
+  most 2,500), the schedules and the goals, plus the last few turns for
+  follow-ups. Fixed JSON out: a short answer and an optional chart. It answers
+  from the data only, says what's missing, and isn't medical advice beyond
+  suggesting the doctor for readings well out of range. Recorded like a
+  capture (feature "ask"), so it shows in AI usage and counts against the
+  budget. The conversation isn't stored.
+- **Trends** (`GET /trends?days=7|30|90`): worked out from entries on every
+  read — blood pressure readings and averages (and the window before),
+  weight change, protein and Brock Road per day, days with meds logged and
+  items skipped, shots by medication, and sleep (clean nights, carb nights,
+  CPAP, time up). Plain-view bar charts, so it ships over the air.
+- Ask and Trends open from two icons at the top of Home.

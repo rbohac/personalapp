@@ -198,6 +198,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AskRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AskResult"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    tz?: string;
+                    days?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TrendsDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tasks": {
         parameters: {
             query?: never;
@@ -1746,6 +1823,57 @@ export interface components {
             id: string;
             label: string;
         };
+        AskChart: {
+            title: string;
+            unit: null | string;
+            points: components["schemas"]["AskPoint"][];
+        };
+        AskPoint: {
+            label: string;
+            /** Format: double */
+            value: number | string;
+        };
+        AskRequest: {
+            question: string;
+            timeZone?: null | string;
+            history?: null | components["schemas"]["AskTurn"][];
+            /**
+             * Format: int32
+             * @default 90
+             */
+            days: number | string;
+        };
+        AskResult: {
+            answer: string;
+            chart: null | components["schemas"]["AskChart"];
+            /** Format: uuid */
+            askId: null | string;
+        };
+        AskTurn: {
+            question: string;
+            answer: string;
+        };
+        BpPoint: {
+            /** Format: date-time */
+            at: string;
+            /** Format: int32 */
+            systolic: number | string;
+            /** Format: int32 */
+            diastolic: number | string;
+            /** Format: int32 */
+            pulse: null | number | string;
+        };
+        BpTrend: {
+            readings: components["schemas"]["BpPoint"][];
+            /** Format: int32 */
+            avgSystolic: null | number | string;
+            /** Format: int32 */
+            avgDiastolic: null | number | string;
+            /** Format: int32 */
+            prevAvgSystolic: null | number | string;
+            /** Format: int32 */
+            prevAvgDiastolic: null | number | string;
+        };
         CaptureRequest: {
             text: string;
             timeZone?: null | string;
@@ -1758,6 +1886,20 @@ export interface components {
             note: null | string;
             /** Format: uuid */
             captureId?: null | string;
+        };
+        CountItem: {
+            name: string;
+            /** Format: int32 */
+            count: number | string;
+        };
+        DailyTrend: {
+            days: components["schemas"]["ValuePoint"][];
+            /** Format: double */
+            average: number | string;
+            /** Format: double */
+            target: null | number | string;
+            /** Format: int32 */
+            daysMet: number | string;
         };
         EntryDto: {
             /** Format: uuid */
@@ -1865,6 +2007,13 @@ export interface components {
             byEntry: boolean;
         };
         JsonElement: unknown;
+        MedsTrend: {
+            /** Format: int32 */
+            daysLogged: number | string;
+            /** Format: int32 */
+            days: number | string;
+            skipped: components["schemas"]["CountItem"][];
+        };
         Proposal: {
             kind: string;
             area: string;
@@ -1957,6 +2106,21 @@ export interface components {
             expiresAt: string;
             user: components["schemas"]["UserDto"];
         };
+        SleepTrend: {
+            /** Format: int32 */
+            nights: number | string;
+            /** Format: int32 */
+            cleanNights: number | string;
+            /** Format: int32 */
+            carbNights: number | string;
+            /** Format: double */
+            avgCpapHours: null | number | string;
+            /** Format: int32 */
+            avgCpapScore: null | number | string;
+            /** Format: int32 */
+            avgAwakeMinutes: null | number | string;
+            awakeMinutes: components["schemas"]["ValuePoint"][];
+        };
         SnoozeInput: {
             /**
              * Format: int32
@@ -2010,6 +2174,19 @@ export interface components {
         };
         TimeZoneInput: {
             timeZone: string;
+        };
+        TrendsDto: {
+            /** Format: int32 */
+            days: number | string;
+            from: string;
+            to: string;
+            bloodPressure: components["schemas"]["BpTrend"];
+            weight: components["schemas"]["WeightTrend"];
+            protein: components["schemas"]["DailyTrend"];
+            household: components["schemas"]["DailyTrend"];
+            meds: components["schemas"]["MedsTrend"];
+            shots: components["schemas"]["CountItem"][];
+            sleep: components["schemas"]["SleepTrend"];
         };
         UsageBucket: {
             /** Format: date */
@@ -2067,6 +2244,11 @@ export interface components {
             email: string;
             name: null | string;
         };
+        ValuePoint: {
+            day: string;
+            /** Format: double */
+            value: number | string;
+        };
         VocabularyInput: {
             term: string;
             heard?: null | string[];
@@ -2078,6 +2260,13 @@ export interface components {
             heard: string[];
             /** Format: date-time */
             createdAt: string;
+        };
+        WeightTrend: {
+            points: components["schemas"]["ValuePoint"][];
+            /** Format: double */
+            latest: null | number | string;
+            /** Format: double */
+            change: null | number | string;
         };
     };
     responses: never;

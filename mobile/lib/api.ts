@@ -24,6 +24,10 @@ export type ScheduleInput = components["schemas"]["ScheduleInput"];
 export type ItemMark = components["schemas"]["ItemMark"];
 export type Goal = components["schemas"]["GoalDto"];
 export type GoalInput = components["schemas"]["GoalInput"];
+export type AskResult = components["schemas"]["AskResult"];
+export type AskTurn = components["schemas"]["AskTurn"];
+export type AskChart = components["schemas"]["AskChart"];
+export type Trends = components["schemas"]["TrendsDto"];
 
 /**
  * The typed client. Every path, body and response type comes from the API's
