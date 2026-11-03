@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputInstance } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -27,15 +27,29 @@ export default function CaptureScreen() {
   const [skip, setSkip] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const { listen } = useLocalSearchParams<{ listen?: string }>();
+  const input = useRef<TextInputInstance>(null);
+  // Text that was already in the box when listening started: speech adds to it.
+  const before = useRef("");
+  // Typing while listening means editing: stop listening and don't auto-read.
+  const typedWhileListening = useRef(false);
 
   const dictation = useDictation((t) => {
-    setText(t);
+    setText(before.current ? `${before.current} ${t}` : t);
     setSource("voice");
   });
 
-  // The tab bar's mic opens this listening; the keyboard is one tap away.
+  /** Listen, with the cursor in the box so it can be corrected by typing at any point. */
+  function startListening() {
+    before.current = text.trim();
+    typedWhileListening.current = false;
+    input.current?.focus();
+    void dictation.start();
+  }
+
+  // The tab bar's mic opens this listening, cursor in the box.
   useEffect(() => {
-    if (listen === "1") void dictation.start();
+    if (listen === "1") startListening();
+    else input.current?.focus();
     return () => dictation.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -62,7 +76,7 @@ export default function CaptureScreen() {
   // When dictation stops on its own, read what was heard straight away.
   const wasListening = useRef(false);
   useEffect(() => {
-    if (wasListening.current && !dictation.listening && text.trim()) void readIt(text, "voice");
+    if (wasListening.current && !dictation.listening && text.trim() && !typedWhileListening.current) void readIt(text, "voice");
     wasListening.current = dictation.listening;
     // readIt is stable enough for this: it reads the latest text passed in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,11 +130,16 @@ export default function CaptureScreen() {
           ),
         }}
       />
-      <Pressable onPress={Keyboard.dismiss} accessible={false} style={s.body}>
+      <Pressable onPress={() => !dictation.listening && Keyboard.dismiss()} accessible={false} style={s.body}>
       <View style={[s.box, { backgroundColor: c.card, borderColor: dictation.listening ? c.accent : c.line }]}>
         <TextInput
+          ref={input}
           value={text}
           onChangeText={(t) => {
+            if (dictation.listening) {
+              typedWhileListening.current = true;
+              dictation.stop();
+            }
             setText(t);
             setSource("typed");
           }}
@@ -134,7 +153,7 @@ export default function CaptureScreen() {
         />
         <View style={s.boxActions}>
           <Pressable
-            onPress={() => (dictation.listening ? dictation.stop() : void dictation.start())}
+            onPress={() => (dictation.listening ? dictation.stop() : startListening())}
             style={[s.mic, { backgroundColor: dictation.listening ? c.accent : c.bg }]}
             accessibilityLabel={dictation.listening ? "Stop listening" : "Speak"}
           >
