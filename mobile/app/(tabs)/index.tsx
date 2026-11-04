@@ -376,7 +376,7 @@ function Card({ c, sch, busy, onAct, onAskWhen }: { c: Palette; sch: Schedule; b
         <ItemChips c={c} sch={sch} onAct={onAct} onAskWhen={onAskWhen} />
       ) : !byItem && sch.items.length > 0 && !dimmed ? (
         <View style={{ gap: 3 }}>
-          {sch.items.map((i) => (
+          {sch.items.filter((i) => !i.startsWith("#")).map((i) => (
             <Text key={i} style={{ color: c.ink, fontSize: 15 }}>
               • {i}
             </Text>

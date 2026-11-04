@@ -406,3 +406,17 @@ Supersedes the model line of "Areas and capture" above.
   (@kingstinct/react-native-healthkit, read-only, NSHealthShareUsageDescription)
   and Whisper (whisper.rn, expo-file-system for the model download)**, so the
   features that use them can ship over the air.
+
+## 2026-11-04 — A daily list is a checklist, in sections
+
+- The schedule page for a daily list (morning meds and vitamins) shows a
+  **checklist**: one item per row, grouped under its sections, tap to tick or
+  untick, hold for skip today or remind me later, with Took all and Remind me
+  later underneath. Home keeps its one-line summary.
+- **Sections are headings in the same list:** a line starting "# " ("#
+  Medicines", "# Vitamins") groups the lines after it. Headings are never
+  ticked, counted or put in a reminder (`ScheduleRow.ItemNames`). The editor
+  shows one box per section, with a name and its items one per line.
+- "Last taken" on a daily list is the newest entry naming any of its items
+  (it had only looked for entries naming the list, so it read "Not logged
+  yet" after a morning of ticks).

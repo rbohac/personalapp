@@ -10,6 +10,21 @@ import { createSchedule, deleteSchedule, inputOf, listSchedules, siteLabel, upda
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 import { usePalette, type Palette } from "../../../lib/theme";
+import { sectionsOf } from "../../../components/ItemChecklist";
+
+type Section = { title: string; text: string };
+/** The list as sections to edit; items before any heading form an untitled first section. */
+const toSections = (items: string[]): Section[] => {
+  const secs = sectionsOf(items).map((x) => ({ title: x.title ?? "", text: x.items.join("\n") }));
+  return secs.length ? secs : [{ title: "", text: "" }];
+};
+/** Back to one list: a heading line ("# Medicines") before each titled section's items. */
+const fromSections = (secs: Section[]): string[] =>
+  secs.flatMap((x) => {
+    const lines = x.text.split("\n").map((i) => i.trim()).filter(Boolean);
+    if (lines.length === 0) return [];
+    return x.title.trim() ? [`# ${x.title.trim()}`, ...lines] : lines;
+  });
 
 const REPEATS = [
   { label: "Daily", days: 1 },
@@ -33,7 +48,7 @@ export default function ScheduleScreen() {
   const [form, setForm] = useState<ScheduleInput | null>(
     isNew ? { title: "", area: "medications", everyDays: 1, at: "08:00", match: null, nextDue: isoDay(new Date()), items: [], paused: false, rotation: [], weekdays: [], dose: "" } : null,
   );
-  const [itemsText, setItemsText] = useState("");
+  const [sections, setSections] = useState<Section[]>([{ title: "", text: "" }]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [saving, setSaving] = useState(false);
   // What was loaded, to tell a look from an edit: Close until something changes.
@@ -47,8 +62,8 @@ export default function ScheduleScreen() {
         const s = all.find((x) => x.id === id);
         if (!s) throw new Error("That schedule is gone.");
         setForm(inputOf(s));
-        setItemsText(s.items.join("\n"));
-        setLoaded(JSON.stringify({ f: inputOf(s), i: s.items.join("\n") }));
+        setSections(toSections(s.items));
+        setLoaded(JSON.stringify({ f: inputOf(s), i: toSections(s.items) }));
       })
       .catch((e) => {
         Alert.alert("Couldn't open it", e instanceof Error ? e.message : "");
@@ -79,7 +94,7 @@ export default function ScheduleScreen() {
       ...form,
       title: form.title.trim(),
       match: form.match?.trim() || null,
-      items: itemsText.split("\n").map((i) => i.trim()).filter(Boolean),
+      items: fromSections(sections),
       nextDue: Number(form.everyDays) > 1 ? form.nextDue ?? isoDay(new Date()) : null,
       rotation: form.rotation ?? [],
       weekdays: Number(form.everyDays) === 1 ? (form.weekdays ?? []).map(Number) : [],
@@ -115,7 +130,7 @@ export default function ScheduleScreen() {
   }
 
   const canSave = !saving && form.title.trim().length > 0;
-  const changed = isNew || loaded !== JSON.stringify({ f: form, i: itemsText });
+  const changed = isNew || loaded !== JSON.stringify({ f: form, i: sections });
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
       <Stack.Screen
@@ -213,15 +228,41 @@ export default function ScheduleScreen() {
       />
       <Text style={{ color: c.muted, fontSize: 13 }}>Logging a different dose (“tirzepatide 35 units”) updates this by itself.</Text>
 
-      <Label c={c} text="WHAT TO TAKE (ONE PER LINE)" />
-      <TextInput
-        value={itemsText}
-        onChangeText={setItemsText}
-        placeholder={"Vyvanse (skip some days)\nVitamin D 2000 IU"}
-        placeholderTextColor={c.muted}
-        multiline
-        style={[s.field, s.multi, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
-      />
+      <Label c={c} text="WHAT TO TAKE" />
+      <Text style={{ color: c.muted, fontSize: 13 }}>One per line. A note in brackets shows under the name: “Vyvanse (skip some days)”.</Text>
+      {sections.map((sec, i) => (
+        <View key={i} style={[s.section, { borderColor: c.line, backgroundColor: c.card }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <TextInput
+              value={sec.title}
+              onChangeText={(title) => setSections(sections.map((x, j) => (j === i ? { ...x, title } : x)))}
+              placeholder={i === 0 ? "Section, e.g. Medicines (optional)" : "Section, e.g. Vitamins"}
+              placeholderTextColor={c.muted}
+              style={{ flex: 1, color: c.ink, fontSize: 16, fontWeight: "600", paddingVertical: 6 }}
+            />
+            {sections.length > 1 ? (
+              <Pressable
+                onPress={() => setSections(sections.filter((_, j) => j !== i))}
+                hitSlop={10}
+                accessibilityLabel={`Remove section ${sec.title || i + 1}`}
+              >
+                <Text style={{ color: c.danger, fontSize: 14 }}>Remove</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <TextInput
+            value={sec.text}
+            onChangeText={(text) => setSections(sections.map((x, j) => (j === i ? { ...x, text } : x)))}
+            placeholder={i === 0 ? "Vyvanse (skip some days)\nSertraline 50 mg" : "Vitamin D 2000 IU\nFish oil"}
+            placeholderTextColor={c.muted}
+            multiline
+            style={[s.multi, { color: c.ink, fontSize: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line, paddingTop: 8 }]}
+          />
+        </View>
+      ))}
+      <Pressable onPress={() => setSections([...sections, { title: "", text: "" }])} hitSlop={6}>
+        <Text style={{ color: c.accent, fontSize: 15 }}>+ Add a section</Text>
+      </Pressable>
 
       <Label c={c} text="COUNTS AS DONE WHEN YOU LOG" />
       <View style={s.chips}>
@@ -304,6 +345,7 @@ const s = StyleSheet.create({
   label: { fontSize: 12, fontWeight: "600", paddingHorizontal: 4, marginTop: 10 },
   field: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
   multi: { minHeight: 90, textAlignVertical: "top" },
+  section: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 6, gap: 4 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   day: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: "center", justifyContent: "center" },

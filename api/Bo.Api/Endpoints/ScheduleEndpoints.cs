@@ -125,7 +125,7 @@ public static class ScheduleEndpoints
         var user = http.User.UserId();
         await using var conn = await store.Db.OpenAsync();
         if (await ScheduleStore.GetAsync(conn, user, id) is not { } s) return TypedResults.NotFound();
-        var names = s.ByItem ? s.Items.Select(ScheduleLogic.Name).Append(s.MatchText ?? "").Where(n => n.Length >= 3).ToArray() : [];
+        var names = s.ByItem ? ScheduleStore.ListNames(s) : [];
         var rows = await conn.QueryAsync<(Guid Id, string Area, DateTime At, string Data, string Source, string? Raw, DateTime CreatedAt)>(
             """
             select id, area, at, data::text, source, raw, created_at from entries
@@ -210,7 +210,10 @@ public static class ScheduleEndpoints
         if (Problem(b, store) is not null) return null;
         var every = b.EveryDays;
         var next = every > 1 ? ScheduleLogic.Iso(ScheduleLogic.Day(b.NextDue) ?? today) : null;
-        var items = (b.Items ?? []).Select(i => i.Trim()).Where(i => i.Length > 0).Select(i => i.Length > 80 ? i[..80] : i).Take(40).ToArray();
+        // Lines starting "# " are section headings; an empty heading is dropped.
+        var items = (b.Items ?? []).Select(i => i.Trim()).Where(i => i.Length > 0 && i.TrimStart('#').Trim().Length > 0)
+            .Select(i => i.StartsWith('#') ? "# " + i.TrimStart('#').Trim() : i)
+            .Select(i => i.Length > 80 ? i[..80] : i).Take(60).ToArray();
         var match = b.Match?.Trim() is { Length: > 0 } m ? m : null;
         var rotation = (b.Rotation ?? []).Select(r => r.Trim()).Where(r => r.Length > 0).Distinct().ToArray();
         // Weekdays only mean something on a daily schedule; all seven is the same as none.

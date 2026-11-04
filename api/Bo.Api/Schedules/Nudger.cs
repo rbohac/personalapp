@@ -116,7 +116,7 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
     private static IEnumerable<(string Day, string Kind, PushMessage Message)> Owed(ScheduleRow s, ScheduleDto d, Clock clock, DateTime now)
     {
         var today = ScheduleLogic.Iso(clock.Today(now));
-        var items = s.Items.Length > 0 ? string.Join(", ", s.Items) : null;
+        var items = s.ItemNames.Length > 0 ? string.Join(", ", s.ItemNames) : null;
         object data = new { kind = "schedule", scheduleId = s.Id };
 
         // A late (or early) dose moved the cadence: say so, once per move.

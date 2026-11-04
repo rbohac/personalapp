@@ -152,6 +152,21 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// <summary>"left-thigh" → "left thigh".</summary>
     internal static string SiteLabel(string site) => site.Replace('-', ' ');
 
+    /// <summary>A daily list's last dose: the newest entry naming one of its items, or the list itself.</summary>
+    internal static Task<DateTime?> LatestOfListAsync(NpgsqlConnection conn, ScheduleRow s) =>
+        conn.ExecuteScalarAsync<DateTime?>(
+            """
+            select max(at) from entries
+            where user_id = @user and area = @area and coalesce(data->>'event', 'taken') = 'taken'
+              and exists (select 1 from unnest(@names::text[]) n
+                where data->>'medication' ilike '%' || n || '%' or n ilike '%' || (data->>'medication') || '%')
+            """,
+            new { user = s.UserId, area = s.Area, names = ListNames(s) });
+
+    /// <summary>What a daily list's entries are matched by: each item's name and the list's own match text.</summary>
+    internal static string[] ListNames(ScheduleRow s) =>
+        s.ItemNames.Select(ScheduleLogic.Name).Append(s.MatchText ?? "").Where(n => n.Length >= 3).ToArray();
+
     private static string? Escape(string? m) =>
         m is { Length: > 0 } ? m.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_") : null;
 
@@ -201,7 +216,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// <summary>The schedule as the app sees it. Assumes <see cref="SyncAsync"/> has run.</summary>
     internal static async Task<ScheduleDto> DtoAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow)
     {
-        var last = await LatestDoseAsync(conn, s);
+        var last = s.ByItem ? await LatestOfListAsync(conn, s) : await LatestDoseAsync(conn, s);
         ItemMark[] marks = [];
         ScheduleStatus status;
         if (s.ByItem)
@@ -241,7 +256,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             .Where(e => !linked.Contains(e.Id)).Select(e => e.Medication).ToList();
         var wholeList = s.MatchText is { Length: > 0 } m && said.Any(x => x?.Contains(m, StringComparison.OrdinalIgnoreCase) == true);
 
-        return s.Items.Select(item =>
+        return s.ItemNames.Select(item =>
             rows.TryGetValue(item, out var r) ? new ItemMark(item, r.State, r.RemindAt, false)
             : wholeList || said.Any(x => ScheduleLogic.Names(x, item)) ? new ItemMark(item, "taken", null, true)
             : new ItemMark(item, "open", null, false)).ToArray();
@@ -254,7 +269,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// </summary>
     internal async Task<string?> SetItemAsync(NpgsqlConnection conn, ScheduleRow s, string item, string state, DateTime? remindAt, Clock clock, DateTime utcNow)
     {
-        if (!s.ByItem || !s.Items.Contains(item)) return $"\"{item}\" isn't on this list.";
+        if (!s.ByItem || !s.ItemNames.Contains(item)) return $"\"{item}\" isn't on this list.";
         if (state is not ("taken" or "open" or "skipped" or "later")) return "State is taken, open, skipped or later.";
         if (state == "later" && (remindAt is null || remindAt <= utcNow)) return "Pick a time later than now.";
         var day = ScheduleLogic.Iso(clock.Today(utcNow));
