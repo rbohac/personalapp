@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 
+import { ItemChecklist } from "../../components/ItemChecklist";
+import { useRemindPicker } from "../../components/RemindPicker";
 import type { Entry, Schedule } from "../../lib/api";
 import { whenLabel } from "../../lib/dates";
 import { onChanged } from "../../lib/events";
-import { cadenceLabel, listSchedules, markDone, nextDoseLabel, scheduleHistory, shortDate } from "../../lib/schedules";
+import { cadenceLabel, itemName, listSchedules, markDone, nextDoseLabel, scheduleHistory, setItem, shortDate, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
 /**
@@ -43,6 +45,32 @@ export default function ScheduleView() {
   useEffect(() => onChanged("entries", () => void load()), [load]);
   useEffect(() => onChanged("schedules", () => void load()), [load]);
 
+  // "Remind me later": a ref, because the sheet's callback runs before a re-render would land.
+  const remindFor = useRef<string[]>([]);
+  const remind = useRemindPicker(c, (at) => {
+    const items = remindFor.current;
+    void (async () => {
+      try {
+        for (const item of items) setSch(await setItem(id, item, "later", at));
+      } catch (e) {
+        Alert.alert("Not set", e instanceof Error ? e.message : "");
+      }
+    })();
+  });
+  function askWhen(items: string[]) {
+    if (items.length === 0) return;
+    remindFor.current = items;
+    remind.ask(items.length === 1 ? `Remind me to take ${itemName(items[0])}` : `Remind me about ${items.length} items`);
+  }
+
+  async function tick(item: string, state: ItemState) {
+    try {
+      setSch(await setItem(id, item, state));
+    } catch (e) {
+      Alert.alert("Not changed", e instanceof Error ? e.message : "");
+    }
+  }
+
   async function done() {
     setBusy(true);
     try {
@@ -66,7 +94,8 @@ export default function ScheduleView() {
   const tone = st === "overdue" ? c.danger : st === "due" ? c.accent : c.ink;
   const next = nextDoseLabel(sch);
   const canLog = st !== "done" && st !== "paused" && st !== "finished";
-  const byItem = sch.items.length > 0 && Number(sch.everyDays) === 1;
+  const byItem = sch.today.length > 0;
+  const open = sch.today.filter((m) => m.state === "open").map((m) => m.item);
   const days = byItem ? groupByDay(history) : [];
 
   return (
@@ -88,14 +117,29 @@ export default function ScheduleView() {
         {sch.nextDue ? <Line c={c} label="Next due" value={shortDate(sch.nextDue)} /> : null}
         {next ? <Line c={c} label="Next dose" value={next} /> : null}
         <Line c={c} label="Last taken" value={sch.lastDoneAt ? whenLabel(sch.lastDoneAt) : "Not logged yet"} />
-        {canLog ? (
+        {canLog && !byItem ? (
           <Pressable onPress={() => void done()} disabled={busy} style={[s.button, { backgroundColor: c.accent, opacity: busy ? 0.5 : 1 }]}>
-            <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>
-              {byItem ? "Took all" : st === "upcoming" ? "Log one now" : "Done"}
-            </Text>
+            <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>{st === "upcoming" ? "Log one now" : "Done"}</Text>
           </Pressable>
         ) : null}
       </View>
+
+      {byItem ? (
+        <>
+          <Text style={[s.heading, { color: c.muted }]}>TODAY · TAP TO TICK, HOLD FOR MORE</Text>
+          <ItemChecklist c={c} sch={sch} onSet={(item, state) => void tick(item, state)} onAskWhen={askWhen} />
+          {open.length > 0 ? (
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Pressable onPress={() => void done()} disabled={busy} style={[s.button, { flex: 1, backgroundColor: c.accent, opacity: busy ? 0.5 : 1 }]}>
+                <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>Took all</Text>
+              </Pressable>
+              <Pressable onPress={() => askWhen(open)} style={[s.button, { flex: 1, borderWidth: 1, borderColor: c.line }]}>
+                <Text style={{ color: c.ink, fontSize: 16 }}>Remind me later</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </>
+      ) : null}
 
       <Text style={[s.heading, { color: c.muted }]}>HISTORY</Text>
       <View style={[s.card, { backgroundColor: c.card, borderColor: c.line, paddingVertical: 4, gap: 0 }]}>
@@ -117,6 +161,7 @@ export default function ScheduleView() {
               </Pressable>
             ))}
       </View>
+      {remind.picker}
     </ScrollView>
   );
 }

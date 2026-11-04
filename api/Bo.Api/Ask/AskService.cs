@@ -148,7 +148,7 @@ public sealed class AskService(Db db, AreaCatalog catalog, GoalStore goals, IMod
             await ScheduleStore.SyncAsync(conn, s, clock);
             var d = await ScheduleStore.DtoAsync(conn, s, clock, now);
             sb.AppendLine($"- {s.Title}: every {s.EveryDays} day(s){(s.Weekdays.Length > 0 ? $" on {string.Join(",", s.Weekdays.Select(w => (DayOfWeek)w))}" : "")} at {ScheduleLogic.Hhmm(s.AtMinute)}; " +
-                          $"status: {d.Status.Label}; next due {d.NextDue ?? "-"}; dose {d.NextDose ?? "-"}; items: {(s.Items.Length > 0 ? string.Join(", ", s.Items) : "-")}{(s.Paused ? "; paused" : "")}");
+                          $"status: {d.Status.Label}; next due {d.NextDue ?? "-"}; dose {d.NextDose ?? "-"}; items: {(s.ItemNames.Length > 0 ? string.Join(", ", s.ItemNames) : "-")}{(s.Paused ? "; paused" : "")}");
         }
 
         sb.AppendLine().AppendLine("## Goals (this week)");

@@ -78,7 +78,14 @@ internal sealed class ScheduleRow
     /// <summary>Daily, on these days of the week only (0 = Sunday).</summary>
     public bool OnDay(DateOnly d) => Weekdays.Length == 0 || Weekdays.Contains((int)d.DayOfWeek);
     /// <summary>A daily schedule with a list is ticked off item by item.</summary>
-    public bool ByItem => Daily && Items.Length > 0;
+    public bool ByItem => Daily && ItemNames.Length > 0;
+    /// <summary>
+    /// The things to take, without section headings. A line starting "# " in
+    /// <see cref="Items"/> is a heading ("# Medicines", "# Vitamins") that groups
+    /// the lines after it on screen; it's never ticked or counted.
+    /// </summary>
+    public string[] ItemNames => Items.Where(i => !IsHeading(i)).ToArray();
+    public static bool IsHeading(string item) => item.StartsWith('#');
     /// <summary>A course with a set number of doses.</summary>
     public bool Course => Intervals.Length > 0;
     public int CourseTotal => Intervals.Length + 1;
