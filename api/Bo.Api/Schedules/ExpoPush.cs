@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Bo.Api.Data;
 using Dapper;
 using Npgsql;
@@ -21,6 +23,12 @@ public record PushResult(Guid LogId, string Outcome, string? Detail, int Devices
 public sealed class ExpoPush(HttpClient http, Db db, IConfiguration config, ILogger<ExpoPush> log)
 {
     private const string Api = "https://exp.host/--/api/v2/push";
+    // Expo refuses a field sent as null ("categoryId: Expected string, received
+    // null"), so a push with no buttons must leave categoryId out entirely.
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
     private readonly bool _enabled = config.GetValue("Push:Enabled", true);
 
     private sealed record Ticket(string Status, string? Id, string? Message, Details? Details);
@@ -45,7 +53,7 @@ public sealed class ExpoPush(HttpClient http, Db db, IConfiguration config, ILog
             to = t, title = m.Title, body = m.Body, data = m.Data, sound = "default", categoryId = m.CategoryId, priority = "high",
         }).ToArray();
         HttpResponseMessage res;
-        try { res = await http.PostAsJsonAsync($"{Api}/send", messages, ct); }
+        try { res = await http.PostAsJsonAsync($"{Api}/send", messages, Json, ct); }
         catch (HttpRequestException e) { return await RecordAsync(conn, user, m, tokens.Count, "failed", $"Couldn't reach Expo: {e.Message}", []); }
         using (res)
         {
