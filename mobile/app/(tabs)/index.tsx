@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActionSheetIOS, Alert, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActionSheetIOS, Alert, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router, Tabs, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, Tabs, useFocusEffect, useLocalSearchParams, useScrollToTop } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { AreaIcon } from "../../components/AreaIcon";
@@ -38,6 +38,13 @@ export default function HomeScreen() {
   const sync = useSync();
   const [icons, setIcons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  // Whether "recent" holds a real answer yet (a snapshot or a finished load).
+  // Not "!loading": every refresh would hide and re-show the sleep card,
+  // jumping the screen under your finger.
+  const [known, setKnown] = useState(saved != null);
+  // Tapping Home while on Home scrolls back to the top.
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  useScrollToTop(scrollRef);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   // Set from a push ("Not taken yet…"): ask when to remind about what's left.
@@ -73,6 +80,7 @@ export default function HomeScreen() {
       setGoals(gs);
       setTasks(ts);
       setRecent(es);
+      setKnown(true);
       setError(null);
       saveSnapshot("home", { schedules: ss, goals: gs, tasks: ts, recent: es });
     } catch (e) {
@@ -142,11 +150,12 @@ export default function HomeScreen() {
   const hour = new Date().getHours();
   // The morning card shows from 4 am until last night is logged.
   const todayKey = new Date().toDateString();
-  const sleepPending = hour >= 4 && !loading && !recent.some((e) => e.area === "sleep" && new Date(e.at).toDateString() === todayKey);
+  const sleepPending = hour >= 4 && known && !recent.some((e) => e.area === "sleep" && new Date(e.at).toDateString() === todayKey);
   const greeting = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={[s.body, { paddingTop: insets.top + 12 }]}
       refreshControl={

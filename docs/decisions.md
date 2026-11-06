@@ -438,3 +438,11 @@ history all work unchanged.
 - **10 PM is inside quiet hours (22:00–07:30).** A schedule's own nudge now
   gets through when its time was set inside quiet hours on purpose. Its
   follow-up and everything else still wait for morning.
+
+## 2026-11-06 — Home doesn't jump on a refresh
+
+The "How was last night?" card hid itself while Home was loading, so every
+refresh (coming back to the app, a tick, a pull) removed it and put it back,
+moving everything below it under your finger. It now waits only for the
+first answer (a snapshot or a finished load) and stays put through
+refreshes. Tapping Home while on Home scrolls to the top.
