@@ -63,9 +63,11 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// <summary>
     /// The newest entry that counts for this schedule, at or after <paramref name="since"/>:
     /// the schedule's area, a medication containing its match text when it
-    /// has one, and not a "ran out" or "refilled" shot.
+    /// has one, and not a "ran out" or "refilled" shot. With a
+    /// <paramref name="window"/> (one of several daily schedules on the same
+    /// medicine), only its own Done entries and doses said in its part of the day.
     /// </summary>
-    internal static Task<DateTime?> LatestDoseAsync(NpgsqlConnection conn, ScheduleRow s, DateTime? since = null) =>
+    internal static Task<DateTime?> LatestDoseAsync(NpgsqlConnection conn, ScheduleRow s, DateTime? since = null, DoseWindow? window = null) =>
         conn.ExecuteScalarAsync<DateTime?>(
             """
             select max(at) from entries
@@ -73,8 +75,38 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
               and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
               and coalesce(data->>'event', 'taken') = 'taken'
               and (@since::timestamptz is null or at >= @since)
+              and (not @windowed or schedule_id = @id or (schedule_id is null
+                and extract(hour from at at time zone @zone) * 60 + extract(minute from at at time zone @zone) >= @start
+                and extract(hour from at at time zone @zone) * 60 + extract(minute from at at time zone @zone) < @end))
             """,
-            new { user = s.UserId, area = s.Area, match = Escape(s.MatchText), since });
+            new
+            {
+                user = s.UserId, area = s.Area, match = Escape(s.MatchText), since, id = s.Id,
+                windowed = window is not null, zone = window?.Zone ?? "UTC", start = window?.Start ?? 0, end = window?.End ?? 1440,
+            });
+
+    /// <summary>
+    /// The part of the day a daily schedule's said doses belong to, when other
+    /// daily schedules share its medicine (nose sprays at 10 AM and 10 PM): the
+    /// day splits halfway between their times. Null when it's the only one.
+    /// </summary>
+    internal static async Task<DoseWindow?> WindowAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock)
+    {
+        if (!s.Daily || s.ByItem || s.MatchText is not { Length: > 0 } match) return null;
+        var times = (await conn.QueryAsync<(Guid Id, int At)>(
+            """
+            select id, at_minute from schedules
+            where user_id = @user and area = @area and every_days = 1 and cardinality(items) = 0
+              and lower(match_text) = lower(@match)
+            order by at_minute, id
+            """,
+            new { user = s.UserId, area = s.Area, match })).ToList();
+        var i = times.FindIndex(t => t.Id == s.Id);
+        if (times.Count < 2 || i < 0) return null;
+        var start = i == 0 ? 0 : (times[i - 1].At + times[i].At) / 2;
+        var end = i == times.Count - 1 ? 1440 : (times[i].At + times[i + 1].At) / 2;
+        return new DoseWindow(start, end, clock.Zone.Id);
+    }
 
     /// <summary>
     /// The site for the next dose: the one after the newest dose that logged
@@ -128,7 +160,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             new { user = s.UserId, area = s.Area, match = Escape(s.MatchText), field, among });
 
     private static async Task<DateTime?> DoneTodayAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow) =>
-        await LatestDoseAsync(conn, s, clock.StartOfToday(utcNow));
+        await LatestDoseAsync(conn, s, clock.StartOfToday(utcNow), await WindowAsync(conn, s, clock));
 
     /// <summary>
     /// The dose to take: whichever is newer of the last one logged (a
@@ -216,7 +248,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// <summary>The schedule as the app sees it. Assumes <see cref="SyncAsync"/> has run.</summary>
     internal static async Task<ScheduleDto> DtoAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow)
     {
-        var last = s.ByItem ? await LatestOfListAsync(conn, s) : await LatestDoseAsync(conn, s);
+        var last = s.ByItem ? await LatestOfListAsync(conn, s) : await LatestDoseAsync(conn, s, null, await WindowAsync(conn, s, clock));
         ItemMark[] marks = [];
         ScheduleStatus status;
         if (s.ByItem)
@@ -339,8 +371,8 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         var (data, problems) = catalog.Validate(area, raw);
         if (problems.Count > 0) return string.Join(" ", problems);
         await conn.ExecuteAsync(
-            "insert into entries (user_id, area, at, data, source, raw) values (@user, @area, @at, @data::jsonb, 'manual', @raw)",
-            new { user = s.UserId, area = s.Area, at = utcNow, data = JsonSerializer.Serialize(data), raw = $"Done: {s.Title}" });
+            "insert into entries (user_id, area, at, data, source, raw, schedule_id) values (@user, @area, @at, @data::jsonb, 'manual', @raw, @id)",
+            new { user = s.UserId, area = s.Area, at = utcNow, data = JsonSerializer.Serialize(data), raw = $"Done: {s.Title}", id = s.Id });
         return null;
     }
 

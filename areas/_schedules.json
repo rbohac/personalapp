@@ -12,6 +12,20 @@
       "match": "morning meds"
     },
     {
+      "title": "Morning nose sprays",
+      "area": "medications",
+      "match": "nose spray",
+      "everyDays": 1,
+      "at": "10:00"
+    },
+    {
+      "title": "Night nose sprays",
+      "area": "medications",
+      "match": "nose spray",
+      "everyDays": 1,
+      "at": "22:00"
+    },
+    {
       "title": "Tirzepatide",
       "area": "shots",
       "match": "tirzepatide",

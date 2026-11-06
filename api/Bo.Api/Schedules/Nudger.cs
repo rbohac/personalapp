@@ -8,7 +8,8 @@ namespace Bo.Api.Schedules;
 /// Every five minutes: for each person with schedules, bring each
 /// schedule up to date and send what's owed — the nudge at the due time, one
 /// follow-up two hours later, the snoozed one when its snooze ends, and a
-/// note when a late dose moved the cadence. Never during quiet hours.
+/// note when a late dose moved the cadence. Never during quiet hours,
+/// except a nudge whose own time is inside them.
 /// schedule_nudges records each push, so a restart or an overlapping run
 /// never sends one twice.
 /// </summary>
@@ -44,10 +45,14 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
                 if (s.Paused) continue;
                 await ScheduleStore.SyncAsync(conn, s, clock);
                 var now = time.GetUtcNow().UtcDateTime;
-                if (clock.Quiet(now)) continue;
+                // Quiet hours hold every push, except a schedule's own nudge when
+                // its time was set inside them on purpose (night nose sprays at 10 PM).
+                var quiet = clock.Quiet(now);
+                if (quiet && !clock.QuietAt(s.AtMinute)) continue;
                 var dto = await ScheduleStore.DtoAsync(conn, s, clock, now);
                 foreach (var (day, kind, message) in Owed(s, dto, clock, now))
                 {
+                    if (quiet && kind != "due") continue;
                     // Claim before sending: a second run racing this one finds the row and stays quiet.
                     var claimed = await conn.ExecuteAsync(
                         "insert into schedule_nudges (schedule_id, day, kind) values (@id, @day::date, @kind) on conflict do nothing",
