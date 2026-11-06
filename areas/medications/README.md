@@ -25,3 +25,6 @@ spelled right and a missing dose can be filled in:
 - Morning vitamins — taken with the morning meds (list to come)
 - Wolverine patch — a patch, on a short course (every other day, then
   weekly); "put on my Wolverine patch" is medication "Wolverine patch"
+- Nose sprays — morning and night; "did my nose sprays", "nasal spray",
+  "sprayed my nose" are one entry, medication "nose spray" (whatever brand
+  was named goes in `notes`)

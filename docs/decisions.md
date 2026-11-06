@@ -420,3 +420,21 @@ Supersedes the model line of "Areas and capture" above.
 - "Last taken" on a daily list is the newest entry naming any of its items
   (it had only looked for entries naming the list, so it read "Not logged
   yet" after a morning of ticks).
+
+## 2026-11-06 — Nose sprays: two daily schedules on one medicine
+
+Morning and night nose sprays are two daily schedules ("Morning nose
+sprays" 10:00, "Night nose sprays" 22:00), both matching "nose spray",
+rather than a new twice-a-day cadence — the nudge, follow-up, Done and
+history all work unchanged.
+
+- **Which one a dose counts for.** Done (in the app or on the push) stamps
+  the entry with its schedule (`entries.schedule_id`), so a late morning
+  dose pressed at 5 PM is still the morning one. A dose said in words counts
+  for the schedule whose part of the day it falls in: the day splits halfway
+  between the times (before 4 PM is morning, after is night). This applies
+  whenever two or more daily schedules share a medicine; one alone is
+  unchanged.
+- **10 PM is inside quiet hours (22:00–07:30).** A schedule's own nudge now
+  gets through when its time was set inside quiet hours on purpose. Its
+  follow-up and everything else still wait for morning.

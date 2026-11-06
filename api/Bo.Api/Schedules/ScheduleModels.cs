@@ -94,6 +94,9 @@ internal sealed class ScheduleRow
     public int? GapAfter(int n) => !Course ? EveryDays : n >= 1 && n <= Intervals.Length ? Intervals[n - 1] : null;
 }
 
+/// <summary>The minutes of the local day [Start, End) whose said doses count for a schedule.</summary>
+internal sealed record DoseWindow(int Start, int End, string Zone);
+
 /// <summary>A person's clock: zone and quiet hours.</summary>
 internal sealed record Clock(TimeZoneInfo Zone, int QuietStartMinute, int QuietEndMinute)
 {
@@ -110,7 +113,12 @@ internal sealed record Clock(TimeZoneInfo Zone, int QuietStartMinute, int QuietE
     public bool Quiet(DateTime utcNow)
     {
         var l = Local(utcNow);
-        var m = l.Hour * 60 + l.Minute;
+        return QuietAt(l.Hour * 60 + l.Minute);
+    }
+
+    /// <summary>Whether a minute of the day falls in quiet hours.</summary>
+    public bool QuietAt(int m)
+    {
         return QuietStartMinute > QuietEndMinute
             ? m >= QuietStartMinute || m < QuietEndMinute
             : m >= QuietStartMinute && m < QuietEndMinute;
