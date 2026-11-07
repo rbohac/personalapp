@@ -13,8 +13,9 @@ import { useAuth } from "../../lib/auth";
 import { whenLabel } from "../../lib/dates";
 import { listGoals } from "../../lib/goals";
 import { listTasks } from "../../lib/tasks";
-import { pendingAll, saveSnapshot, snapshot } from "../../lib/local";
-import { clearFailed, flush, useSync } from "../../lib/offline";
+import { cacheGet, pendingAll, saveSnapshot } from "../../lib/local";
+import { clearFailed, flush, useSync, wake } from "../../lib/offline";
+import { rollGoals, rollSchedules } from "../../lib/rollover";
 import { onChanged } from "../../lib/events";
 import { acceptDay, cadenceLabel, itemName, keepDay, listSchedules, markDone, nextDoseLabel, setItem, shortDate, weekday, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
@@ -29,7 +30,11 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { state } = useAuth();
   // The last state Home showed paints first; the network brings it up to date.
-  const [saved] = useState(() => snapshot<{ schedules: Schedule[]; goals: Goal[]; tasks: Task[]; recent: Entry[] }>("home"));
+  // A snapshot from an earlier day is brought forward first, so yesterday's "Done" doesn't read as today's.
+  const [saved] = useState(() => {
+    const snap = cacheGet<{ schedules: Schedule[]; goals: Goal[]; tasks: Task[]; recent: Entry[] }>("snapshot:home");
+    return snap ? { ...snap.value, schedules: rollSchedules(snap.value.schedules ?? [], snap.at), goals: rollGoals(snap.value.goals ?? [], snap.at) } : null;
+  });
   const [schedules, setSchedules] = useState<Schedule[]>(saved?.schedules ?? []);
   const [goals, setGoals] = useState<Goal[]>(saved?.goals ?? []);
   const [tasks, setTasks] = useState<Task[]>(saved?.tasks ?? []);
@@ -198,7 +203,11 @@ export default function HomeScreen() {
       </View>
 
       {!sync.online || sync.pending > 0 || sync.syncing || sync.failed.length > 0 ? (
-        <Pressable onPress={() => (sync.failed.length ? clearFailed() : void flush())} style={[s.syncRow, { borderColor: c.line }]}>
+        <Pressable
+          onPress={() => (sync.failed.length ? clearFailed() : void wake())}
+          onLongPress={() => sync.lastError && Alert.alert("Last connection error", sync.lastError)}
+          style={[s.syncRow, { borderColor: c.line }]}
+        >
           <Ionicons
             name={!sync.online ? "cloud-offline-outline" : sync.failed.length ? "alert-circle-outline" : "cloud-upload-outline"}
             size={16}
@@ -208,7 +217,9 @@ export default function HomeScreen() {
             {sync.failed.length
               ? `Couldn't sync: ${sync.failed[sync.failed.length - 1]} · tap to dismiss`
               : !sync.online
-                ? `Offline · showing what was last synced${sync.pending ? ` · ${sync.pending} change${sync.pending === 1 ? "" : "s"} waiting` : ""}`
+                ? `${sync.reason === "server" ? "Can't reach Bo's server" : sync.reason === "network" ? "No internet" : "Reconnecting…"}`
+                  + `${sync.lastSynced ? ` · last synced ${syncedLabel(sync.lastSynced)}` : ""}`
+                  + `${sync.pending ? ` · ${sync.pending} change${sync.pending === 1 ? "" : "s"} waiting` : ""} · tap to retry`
                 : sync.syncing
                   ? "Syncing…"
                   : `${sync.pending} change${sync.pending === 1 ? "" : "s"} waiting to sync · tap to send`}
@@ -577,3 +588,11 @@ const s = StyleSheet.create({
   summary: { flexDirection: "row", alignItems: "center", gap: 10 },
   chip: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
 });
+
+/** "3:12 pm", or "yesterday 9:40 pm", or "Thu 9:40 pm". */
+function syncedLabel(ms: number): string {
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }).toLowerCase();
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 864e5);
+  return days === 0 ? time : days === 1 ? `yesterday ${time}` : `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+}
