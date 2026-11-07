@@ -6,6 +6,7 @@ import {
   cacheGet, cacheKeys, cachePut, outboxAdd, outboxAll, outboxDelete, outboxDropFor, outboxFail, outboxRename,
   pendingAll, pendingSetResult, pruneCache,
 } from "./local";
+import { rollGoals, rollSchedules } from "./rollover";
 import { getToken } from "./token";
 
 /**
@@ -21,10 +22,27 @@ import { getToken } from "./token";
  *    after a lost answer never applies twice.
  *  - Anything else (settings, editing a schedule, Ask) needs a connection and
  *    says so.
+ *
+ * Resilience, so a blip never sticks:
+ *  - A request that fails at the network (a TLS error as the phone wakes, a
+ *    dropped socket) is tried once more before anything is called offline.
+ *  - Slow isn't offline: with a saved copy, a read that hasn't answered in a
+ *    few seconds shows the copy and keeps going; when the answer lands, the
+ *    screen refreshes.
+ *  - Once offline, Bo checks the server on its own (2 s, 4 s, … up to a
+ *    minute, and straight away when the app comes to the front). The moment
+ *    it answers: queued changes are sent, offline captures read, and every
+ *    screen reloads.
+ *  - A saved copy from an earlier day is brought forward before it's shown
+ *    (lib/rollover.ts), so yesterday's "Done" never reads as today's.
  */
 
-const READ_TIMEOUT_MS = 8000;
-const WRITE_TIMEOUT_MS = 12000;
+/** With a saved copy to show meanwhile. */
+const FAST_READ_MS = 4000;
+/** With nothing saved, wait longer for the real answer. */
+const READ_TIMEOUT_MS = 15000;
+const WRITE_TIMEOUT_MS = 15000;
+const RETRY_AFTER_MS = 700;
 
 export function uuid(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => {
@@ -34,6 +52,7 @@ export function uuid(): string {
 }
 
 class Offline extends Error {}
+class TimedOut extends Offline {}
 
 /** A network failure (no signal, server unreachable, too slow), as opposed to an answer. */
 export function isOffline(e: unknown): boolean {
@@ -42,9 +61,41 @@ export function isOffline(e: unknown): boolean {
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Offline("timed out")), ms);
+    const t = setTimeout(() => reject(new TimedOut("timed out")), ms);
     p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
   });
+}
+
+/** fetch, tried once more after a moment when it fails at the network (not when the server answers). */
+async function send(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input instanceof Request ? input.clone() : input, init);
+  } catch {
+    await new Promise((r) => setTimeout(r, RETRY_AFTER_MS));
+    return fetch(input instanceof Request ? input.clone() : input, init);
+  }
+}
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Which screens to refresh when a slow read finally answers. */
+function eventFor(path: string): Parameters<typeof changed>[0] | null {
+  const p = path.split("?")[0];
+  if (p.startsWith("/schedules")) return "schedules";
+  if (p.startsWith("/entries")) return "entries";
+  if (p.startsWith("/tasks")) return "tasks";
+  if (p.startsWith("/goals")) return "goals";
+  return null;
+}
+
+/** A saved read, as the screens get it: brought forward to today, marked as saved. */
+function fromCache(path: string, saved: { value: unknown; at: number }): Response {
+  const p = path.split("?")[0];
+  const value = !Array.isArray(saved.value) ? saved.value
+    : p === "/schedules" ? rollSchedules(saved.value, saved.at)
+    : p === "/goals" ? rollGoals(saved.value, saved.at)
+    : saved.value;
+  return json(value, 200, { "X-Bo-Offline": "1" });
 }
 
 const json = (value: unknown, status = 200, extra: Record<string, string> = {}) =>
@@ -76,22 +127,31 @@ function kindOf(method: string, path: string): Kind | null {
 export async function offlineFetch(request: Request): Promise<Response> {
   const path = keyOf(request.url);
   if (request.method === "GET") {
-    try {
-      const res = await withTimeout(fetch(request), READ_TIMEOUT_MS);
-      if (res.status >= 500) {
-        const saved = cacheGet(path);
-        if (saved) return json(saved.value, 200, { "X-Bo-Offline": "1" });
-      }
+    const saved = cacheGet(path);
+    const live = send(request).then(async (res) => {
       if (res.ok) {
         const text = await res.clone().text();
         try { cachePut(path, JSON.parse(text)); } catch { /* not JSON: don't keep */ }
-        setOnline(true);
+        synced();
+      }
+      return res;
+    });
+    try {
+      const res = await withTimeout(live, saved ? FAST_READ_MS : READ_TIMEOUT_MS);
+      if (res.status >= 500 && saved) {
+        wentOffline(`server ${res.status}`);
+        return fromCache(path, saved);
       }
       return res;
     } catch (e) {
-      const saved = cacheGet(path);
-      setOnline(false);
-      if (saved) return json(saved.value, 200, { "X-Bo-Offline": "1" });
+      if (e instanceof TimedOut && saved) {
+        // Slow, not gone: show the copy now, and refresh when the answer lands.
+        const ev = eventFor(path);
+        live.then((r) => { if (r.ok && ev) changed(ev); }, (err) => wentOffline(errorText(err)));
+        return fromCache(path, saved);
+      }
+      wentOffline(errorText(e));
+      if (saved) return fromCache(path, saved);
       throw e;
     }
   }
@@ -99,12 +159,12 @@ export async function offlineFetch(request: Request): Promise<Response> {
   const kind = kindOf(request.method, path);
   if (!kind) {
     try {
-      const res = await fetch(request);
+      const res = await send(request);
       setOnline(true);
       return res;
     } catch (e) {
-      setOnline(false);
-      throw new Error("You're offline. This needs a connection.", { cause: e });
+      wentOffline(errorText(e));
+      throw new Error("Can't reach Bo right now. This needs a connection — try again in a moment.", { cause: e });
     }
   }
 
@@ -115,11 +175,11 @@ export async function offlineFetch(request: Request): Promise<Response> {
   // Something queued goes first: changes reach the server in the order they were made.
   if (outboxAll().length === 0) {
     try {
-      const res = await withTimeout(fetch(request.url, { method: request.method, headers, body: body ?? undefined }), WRITE_TIMEOUT_MS);
+      const res = await withTimeout(send(request.url, { method: request.method, headers, body: body ?? undefined }), WRITE_TIMEOUT_MS);
       setOnline(true);
       return res;
-    } catch {
-      setOnline(false);
+    } catch (e) {
+      wentOffline(errorText(e));
     }
   }
 
@@ -304,17 +364,16 @@ export async function flush(): Promise<void> {
       let res: Response;
       try {
         res = await withTimeout(
-          fetch(API_URL + row.path, {
+          send(API_URL + row.path, {
             method: row.method,
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Idempotency-Key": row.id },
             body: row.body ?? undefined,
           }),
           WRITE_TIMEOUT_MS,
         );
-      } catch {
-        setOnline(false);
+      } catch (e) {
         outboxFail(row.id, "offline");
-        scheduleFlush(20000);
+        wentOffline(errorText(e));
         return;
       }
       setOnline(true);
@@ -366,7 +425,7 @@ async function readPendingCaptures() {
   for (const p of pendingAll().filter((x) => !x.result)) {
     try {
       const res = await withTimeout(
-        fetch(`${API_URL}/capture`, {
+        send(`${API_URL}/capture`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({ text: p.text, source: p.source, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
@@ -376,7 +435,8 @@ async function readPendingCaptures() {
       if (!res.ok) continue;
       pendingSetResult(p.id, await res.json());
       changed("entries");
-    } catch {
+    } catch (e) {
+      wentOffline(errorText(e));
       return;
     }
   }
@@ -384,8 +444,20 @@ async function readPendingCaptures() {
 
 // --- status, for the badge on Home ---
 
-type SyncState = { online: boolean; pending: number; syncing: boolean; failed: string[]; toReview: number };
-let state: SyncState = { online: true, pending: 0, syncing: false, failed: [], toReview: 0 };
+/** Why Bo is offline: no internet at all, or the internet's fine and Bo's server isn't answering. */
+export type OfflineReason = "network" | "server" | null;
+type SyncState = {
+  online: boolean; pending: number; syncing: boolean; failed: string[]; toReview: number;
+  /** When a read last reached the server (ms). */
+  lastSynced: number | null;
+  reason: OfflineReason;
+  /** The last network error, in the system's words (for the curious). */
+  lastError: string | null;
+};
+let state: SyncState = {
+  online: true, pending: 0, syncing: false, failed: [], toReview: 0,
+  lastSynced: cacheGet<number>("meta:lastSynced")?.value ?? null, reason: null, lastError: null,
+};
 const listeners = new Set<() => void>();
 
 function setState(p: Partial<SyncState>) {
@@ -393,8 +465,87 @@ function setState(p: Partial<SyncState>) {
   listeners.forEach((l) => l());
 }
 
+let lastSyncWrite = 0;
+function synced() {
+  const now = Date.now();
+  setOnline(true);
+  if (now - lastSyncWrite > 30000) {
+    lastSyncWrite = now;
+    try { cachePut("meta:lastSynced", now); } catch { /* not worth failing a read over */ }
+  }
+  setState({ lastSynced: now });
+}
+
 function setOnline(online: boolean) {
-  if (state.online !== online) setState({ online });
+  if (state.online === online) return;
+  if (online) {
+    // Back: stop checking, send what's waiting, and let every screen swap its saved copy for the real thing.
+    stopProbe();
+    setState({ online: true, reason: null, lastError: null });
+    scheduleFlush(0);
+    changed("schedules");
+    changed("entries");
+    changed("tasks");
+    changed("goals");
+  } else {
+    setState({ online: false });
+  }
+}
+
+function wentOffline(error: string) {
+  setOnline(false);
+  setState({ lastError: error });
+  startProbe();
+}
+
+// --- checking for the way back, on its own ---
+
+let probeTimer: ReturnType<typeof setTimeout> | null = null;
+let probeDelay = 2000;
+
+function startProbe() {
+  if (probeTimer) return;
+  probeTimer = setTimeout(() => void probe(), probeDelay);
+}
+
+function stopProbe() {
+  if (probeTimer) clearTimeout(probeTimer);
+  probeTimer = null;
+  probeDelay = 2000;
+}
+
+async function reaches(url: string, ms: number): Promise<boolean> {
+  try {
+    const res = await withTimeout(fetch(url, { cache: "no-store" }), ms);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function probe() {
+  probeTimer = null;
+  if (await reaches(`${API_URL}/healthz`, 6000)) {
+    setOnline(true);
+    return;
+  }
+  // Tell "no internet" from "Bo's server isn't answering" — they're fixed in different places.
+  const internet = await reaches("https://captive.apple.com/hotspot-detect.html", 5000);
+  setState({ reason: internet ? "server" : "network" });
+  probeDelay = Math.min(probeDelay * 2, 60000);
+  startProbe();
+}
+
+/**
+ * The app came to the front (or the strip was tapped): check now rather than
+ * waiting for the next try, then send what's queued.
+ */
+export async function wake(): Promise<void> {
+  if (!state.online) {
+    stopProbe();
+    await probe();
+  }
+  await flush();
 }
 
 /** Re-read the counts from the store. */

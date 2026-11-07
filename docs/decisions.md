@@ -446,3 +446,27 @@ refresh (coming back to the app, a tick, a pull) removed it and put it back,
 moving everything below it under your finger. It now waits only for the
 first answer (a snapshot or a finished load) and stays put through
 refreshes. Tapping Home while on Home scrolls to the top.
+
+## 2026-11-07 — Offline that heals itself
+
+At home on good Wi-Fi, Bo said "Offline" and showed yesterday's ticks as
+today's. Three causes, three fixes (all in `mobile/lib/offline.ts` and
+`lib/rollover.ts`):
+
+- **One blip stuck.** A single failed read (a TLS error as the phone wakes,
+  or a read slower than 8 s) flipped Bo offline, and nothing checked again
+  until something else happened to succeed — a capture said meanwhile sat
+  waiting. Now a network failure is retried once before it counts; slow
+  isn't offline (with a saved copy, show it after 4 s and refresh when the
+  answer lands); and once offline, Bo checks `/healthz` on its own (2 s,
+  doubling to a minute, and straight away when the app comes to the front).
+  When it answers: queued changes go, offline captures are read, every
+  screen reloads.
+- **Yesterday read as today.** Statuses are worked out by the server, so a
+  saved copy keeps the day it was saved. A copy from an earlier day is now
+  brought forward before it's shown: daily schedules start over (items open,
+  due at their time, off-days off), every-N-days ones that came due read as
+  due, daily goals start at zero.
+- **"Offline" said nothing useful.** The strip now says which: "No internet"
+  or "Can't reach Bo's server" (checked against captive.apple.com), with
+  when it last synced; tap to retry, hold for the last error.

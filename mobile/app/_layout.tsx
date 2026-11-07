@@ -12,7 +12,7 @@ import { ensureNotificationPermission, registerReminderCategory, reminderActionO
 import { getTask, inputOf, setDone, updateTask } from "../lib/tasks";
 import { usePalette } from "../lib/theme";
 import { applyLatestUpdate } from "../lib/updates";
-import { flush, notify } from "../lib/offline";
+import { flush, wake, notify } from "../lib/offline";
 import { markDone, registerScheduleCategory, reportTimeZone, scheduleActionOf, setItem, snooze } from "../lib/schedules";
 
 export default function RootLayout() {
@@ -108,7 +108,8 @@ function Gate() {
     if (!signedIn) return;
     notify();
     void flush();
-    const sub = AppState.addEventListener("change", (st) => st === "active" && void flush());
+    // Coming to the front: check the server now (a wake-up TLS blip doesn't stick), then send.
+    const sub = AppState.addEventListener("change", (st) => st === "active" && void wake());
     return () => sub.remove();
   }, [signedIn]);
 
