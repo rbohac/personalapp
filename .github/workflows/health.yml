@@ -41,11 +41,12 @@ jobs:
           done
           echo "::error::api.bohac.dev/healthz is not answering 200"
           exit 1
-      # When it's down, ask Fly why (read-only: status, machines, recent logs).
+      # Ask Fly how the app stands (read-only: status, machines, certs, recent
+      # logs) — always, so a healthy run shows the machine count too.
       - uses: superfly/flyctl-actions/setup-flyctl@master
-        if: failure()
+        if: always()
       - name: Fly status
-        if: failure()
+        if: always()
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
