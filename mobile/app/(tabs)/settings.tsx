@@ -164,6 +164,7 @@ export default function SettingsScreen() {
         <Button c={c} label="Check for updates" onPress={() => void checkUpdates()} />
         {updateNote ? <Text style={[s.note, { color: c.muted }]}>{updateNote}</Text> : null}
         <Line c={c} label="API" value={API_URL} />
+        <Button c={c} label="Connection & debugging" onPress={() => router.push("/connection")} />
       </Group>
     </ScrollView>
   );

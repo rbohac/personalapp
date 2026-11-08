@@ -6,6 +6,7 @@ import {
   cacheGet, cacheKeys, cachePut, outboxAdd, outboxAll, outboxDelete, outboxDropFor, outboxFail, outboxRename,
   pendingAll, pendingSetResult, pruneCache,
 } from "./local";
+import { logNet } from "./netlog";
 import { rollGoals, rollSchedules } from "./rollover";
 import { getToken } from "./token";
 
@@ -66,13 +67,28 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** fetch, tried once more after a moment when it fails at the network (not when the server answers). */
+/** fetch, tried once more after a moment when it fails at the network (not when the server answers). Every try is logged. */
 async function send(input: RequestInfo, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(input instanceof Request ? input.clone() : input, init);
+    return await timed(input, init, false);
   } catch {
     await new Promise((r) => setTimeout(r, RETRY_AFTER_MS));
-    return fetch(input instanceof Request ? input.clone() : input, init);
+    return timed(input, init, true);
+  }
+}
+
+async function timed(input: RequestInfo, init: RequestInit | undefined, retry: boolean): Promise<Response> {
+  const started = Date.now();
+  const url = input instanceof Request ? input.url : String(input);
+  const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+  const path = keyOf(url).split("?")[0];
+  try {
+    const res = await fetch(input instanceof Request ? input.clone() : input, init);
+    logNet({ at: started, method, path, status: res.status, error: null, ms: Date.now() - started, retry });
+    return res;
+  } catch (e) {
+    logNet({ at: started, method, path, status: null, error: errorText(e), ms: Date.now() - started, retry });
+    throw e;
   }
 }
 
@@ -473,8 +489,11 @@ function synced() {
     lastSyncWrite = now;
     try { cachePut("meta:lastSynced", now); } catch { /* not worth failing a read over */ }
   }
-  setState({ lastSynced: now });
+  // Re-render Home at most every 30 s for this, not on every read.
+  if (!state.lastSynced || now - state.lastSynced > 30000) setState({ lastSynced: now });
 }
+
+let lastReloadAll = 0;
 
 function setOnline(online: boolean) {
   if (state.online === online) return;
@@ -483,10 +502,15 @@ function setOnline(online: boolean) {
     stopProbe();
     setState({ online: true, reason: null, lastError: null });
     scheduleFlush(0);
-    changed("schedules");
-    changed("entries");
-    changed("tasks");
-    changed("goals");
+    // Reload every screen once, not every time a flaky connection flips back.
+    const now = Date.now();
+    if (now - lastReloadAll > 20000) {
+      lastReloadAll = now;
+      changed("schedules");
+      changed("entries");
+      changed("tasks");
+      changed("goals");
+    }
   } else {
     setState({ online: false });
   }
@@ -516,7 +540,7 @@ function stopProbe() {
 
 async function reaches(url: string, ms: number): Promise<boolean> {
   try {
-    const res = await withTimeout(fetch(url, { cache: "no-store" }), ms);
+    const res = await withTimeout(timed(url, { cache: "no-store" }, false), ms);
     return res.ok;
   } catch {
     return false;
@@ -534,6 +558,25 @@ async function probe() {
   setState({ reason: internet ? "server" : "network" });
   probeDelay = Math.min(probeDelay * 2, 60000);
   startProbe();
+}
+
+/** For Settings → Connection: time one request (no retry, no caching). */
+export async function check(url: string, auth: boolean, ms = 10000): Promise<{ ok: boolean; detail: string; ms: number }> {
+  const started = Date.now();
+  try {
+    const token = auth ? getToken() : null;
+    const res = await withTimeout(timed(url, { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : {} }, false), ms);
+    return { ok: res.ok, detail: `HTTP ${res.status}`, ms: Date.now() - started };
+  } catch (e) {
+    return { ok: false, detail: errorText(e), ms: Date.now() - started };
+  }
+}
+
+/** Drop one queued change that the server will never take, so the rest can go. */
+export function discardQueued(id: string) {
+  outboxDelete(id);
+  notify();
+  scheduleFlush(0);
 }
 
 /**

@@ -470,3 +470,19 @@ today's. Three causes, three fixes (all in `mobile/lib/offline.ts` and
 - **"Offline" said nothing useful.** The strip now says which: "No internet"
   or "Can't reach Bo's server" (checked against captive.apple.com), with
   when it last synced; tap to retry, hold for the last error.
+
+## 2026-11-07 — Connection debugging
+
+Settings → Connection (also: hold the offline strip on Home) runs three
+checks — internet (captive.apple.com), Bo's server (`/healthz`), signed in
+(`/me`) — and says which one is the problem in words. It lists what's
+waiting to send (hold one to drop it if it's stuck and blocking the rest)
+and the last 60 requests with status, time and the system's own error text;
+Share report sends it all as text. `.github/workflows/health.yml` checks the
+API every 30 minutes from GitHub, so an outage emails the owner instead of
+showing up as a laggy app; when it fails it asks Fly for status, machines,
+certificates and recent logs.
+
+Also: going back online reloads every screen at most every 20 s (a flaky
+connection was reloading Home on each flip), and a successful read no longer
+re-renders Home each time.
