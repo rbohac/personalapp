@@ -205,7 +205,7 @@ export default function HomeScreen() {
       {!sync.online || sync.pending > 0 || sync.syncing || sync.failed.length > 0 ? (
         <Pressable
           onPress={() => (sync.failed.length ? clearFailed() : void wake())}
-          onLongPress={() => sync.lastError && Alert.alert("Last connection error", sync.lastError)}
+          onLongPress={() => router.push("/connection")}
           style={[s.syncRow, { borderColor: c.line }]}
         >
           <Ionicons
@@ -219,7 +219,7 @@ export default function HomeScreen() {
               : !sync.online
                 ? `${sync.reason === "server" ? "Can't reach Bo's server" : sync.reason === "network" ? "No internet" : "Reconnecting…"}`
                   + `${sync.lastSynced ? ` · last synced ${syncedLabel(sync.lastSynced)}` : ""}`
-                  + `${sync.pending ? ` · ${sync.pending} change${sync.pending === 1 ? "" : "s"} waiting` : ""} · tap to retry`
+                  + `${sync.pending ? ` · ${sync.pending} change${sync.pending === 1 ? "" : "s"} waiting` : ""} · tap to retry, hold for details`
                 : sync.syncing
                   ? "Syncing…"
                   : `${sync.pending} change${sync.pending === 1 ? "" : "s"} waiting to sync · tap to send`}
