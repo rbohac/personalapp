@@ -1,0 +1,43 @@
+# Is Bo's API answering? Runs every 30 minutes and on demand; a failure
+# emails the repo owner (GitHub's default for a failed scheduled run).
+# Prints DNS, TLS and timing so a "can't reach the server" on the phone can
+# be told apart: server down, certificate trouble, or just slow.
+name: Health
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+  pull_request:
+    paths: [".github/workflows/health.yml"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: DNS
+        run: |
+          for h in api.bohac.dev bo-api-bohac.fly.dev; do
+            echo "== $h"; dig +short A $h; dig +short AAAA $h
+          done
+      - name: TLS certificate
+        run: |
+          echo | openssl s_client -connect api.bohac.dev:443 -servername api.bohac.dev 2>/dev/null \
+            | openssl x509 -noout -subject -issuer -dates || echo "TLS handshake failed"
+      - name: Health, timed
+        run: |
+          fail=0
+          for url in https://api.bohac.dev/healthz https://bo-api-bohac.fly.dev/healthz; do
+            for i in 1 2 3; do
+              out=$(curl -sS -m 20 -o /dev/null -w "%{http_code} dns=%{time_namelookup}s tls=%{time_appconnect}s total=%{time_total}s" "$url" 2>&1) || true
+              echo "$url try $i: $out"
+            done
+          done
+          for i in 1 2 3; do
+            code=$(curl -sS -m 20 -o /dev/null -w "%{http_code}" https://api.bohac.dev/healthz || echo 000)
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::api.bohac.dev/healthz is not answering 200"
+          exit 1
