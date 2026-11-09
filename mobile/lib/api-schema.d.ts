@@ -1359,7 +1359,11 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": null | components["schemas"]["DoneInput"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
@@ -1948,6 +1952,9 @@ export interface components {
             /** Format: int32 */
             daysMet: number | string;
         };
+        DoneInput: {
+            dose?: null | string;
+        };
         EntryDto: {
             /** Format: uuid */
             id: string;
@@ -2123,6 +2130,11 @@ export interface components {
             nextSite: null | string;
             nextDose: null | string;
             weekdays: (number | string)[];
+            cycle: (number | string)[];
+            doseOptions: string[];
+            fullDose: null | string;
+            /** Format: int32 */
+            nextGap: number | string;
         };
         ScheduleInput: {
             title: string;
@@ -2138,6 +2150,9 @@ export interface components {
             rotation?: null | string[];
             weekdays?: null | (number | string)[];
             dose?: null | string;
+            cycle?: null | (number | string)[];
+            doseOptions?: null | string[];
+            fullDose?: null | string;
         };
         ScheduleStatus: {
             state: string;

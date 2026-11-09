@@ -12,10 +12,15 @@ namespace Bo.Api.Schedules;
 /// <param name="NextSite">The site for the next dose: the one after the last dose's, or opposite a paired shot's that day. Null without a rotation.</param>
 /// <param name="NextDose">The dose to take: the last one logged, else the schedule's.</param>
 /// <param name="Weekdays">Days a daily schedule is due (0 = Sunday); empty = every day.</param>
+/// <param name="Cycle">Gaps (days) that repeat after a normal dose, e.g. [4, 3]; empty = EveryDays.</param>
+/// <param name="DoseOptions">Amounts offered when logging a dose ("0.4 ml").</param>
+/// <param name="FullDose">The full amount: logging it waits EveryDays instead of the next gap.</param>
+/// <param name="NextGap">Days until the one after, if the next dose is a normal one.</param>
 public record ScheduleDto(
     Guid Id, string Title, string Area, string? Match, int EveryDays, string At, string? NextDue,
     string? ShiftedFrom, string[] Items, bool Paused, DateTime? SnoozedUntil, DateTime? LastDoneAt, ScheduleStatus Status,
-    ItemMark[] Today, string[] Rotation, string? NextSite, string? NextDose, int[] Weekdays);
+    ItemMark[] Today, string[] Rotation, string? NextSite, string? NextDose, int[] Weekdays,
+    int[] Cycle, string[] DoseOptions, string? FullDose, int NextGap);
 
 /// <summary>
 /// One item of a daily schedule's list, today. State is open (still to take),
@@ -32,10 +37,14 @@ public record ItemInput(string Item, string State, DateTimeOffset? RemindAt = nu
 /// <param name="DaysLate">Overdue only.</param>
 public record ScheduleStatus(string State, DateTime? DueAt, int DaysLate, string Label);
 
-/// <summary>A new or edited schedule. The whole form, every time; Weekdays and Dose left null keep what's stored.</summary>
+/// <summary>A new or edited schedule. The whole form, every time; Weekdays, Dose, Cycle, DoseOptions and FullDose left null keep what's stored.</summary>
 public record ScheduleInput(
     string Title, string Area, int EveryDays, string At, string? Match = null, string? NextDue = null,
-    string[]? Items = null, bool Paused = false, string[]? Rotation = null, int[]? Weekdays = null, string? Dose = null);
+    string[]? Items = null, bool Paused = false, string[]? Rotation = null, int[]? Weekdays = null, string? Dose = null,
+    int[]? Cycle = null, string[]? DoseOptions = null, string? FullDose = null);
+
+/// <summary>Done, optionally with the amount taken (else the usual dose).</summary>
+public record DoneInput(string? Dose = null);
 
 /// <summary>How long to put off today's nudge.</summary>
 public record SnoozeInput(int Minutes = 60);
@@ -64,6 +73,10 @@ internal sealed class ScheduleRow
     public string? Dose { get; set; }
     public DateTime? DoseSetAt { get; set; }
     public Guid? OppositeOf { get; set; }
+    public int[] Cycle { get; set; } = [];
+    public int CyclePos { get; set; }
+    public string[] DoseOptions { get; set; } = [];
+    public string? FullDose { get; set; }
     public bool Paused { get; set; }
     public DateTime? SnoozedUntil { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -72,9 +85,19 @@ internal sealed class ScheduleRow
         "id, user_id as userid, title, area, match_text as matchtext, every_days as everydays, at_minute as atminute, " +
         "next_due::text as nextdue, shifted_from::text as shiftedfrom, last_entry_at as lastentryat, items, rotation, " +
         "intervals, doses_done as dosesdone, heads_up_days as headsupdays, weekdays, dose, dose_set_at as dosesetat, opposite_of as oppositeof, paused, " +
+        "cycle, cycle_pos as cyclepos, dose_options as doseoptions, full_dose as fulldose, " +
         "snoozed_until as snoozeduntil, created_at as createdat";
 
     public bool Daily => EveryDays == 1;
+    /// <summary>Repeating gaps (twice a week: 4 then 3 days).</summary>
+    public bool Cycles => !Daily && Cycle.Length > 0;
+    /// <summary>The gap after the next normal dose.</summary>
+    public int NextGap => Cycles ? Cycle[CyclePos % Cycle.Length] : EveryDays;
+    /// <summary>Whether a logged dose is the full one ("0.8", "0.8 ml" and "0.80ml" all are).</summary>
+    public bool IsFull(string? dose) => FullDose is { } f && Amount(dose) is { } a && Amount(f) is { } b && a == b;
+    private static decimal? Amount(string? s) =>
+        s is null ? null : System.Text.RegularExpressions.Regex.Match(s, @"\d+(\.\d+)?") is { Success: true } m
+            && decimal.TryParse(m.Value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
     /// <summary>Daily, on these days of the week only (0 = Sunday).</summary>
     public bool OnDay(DateOnly d) => Weekdays.Length == 0 || Weekdays.Contains((int)d.DayOfWeek);
     /// <summary>A daily schedule with a list is ticked off item by item.</summary>

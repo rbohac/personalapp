@@ -64,11 +64,13 @@ public static class ScheduleEndpoints
         await store.SeedOnceAsync(conn, user, clock, now); // a first schedule made by hand doesn't later get the starters beside it unseen
         var id = await conn.ExecuteScalarAsync<Guid>(
             """
-            insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, paused, rotation, weekdays, dose)
-            values (@user, @Title, @Area, @Match, @EveryDays, @AtMinute, @NextDue::date, @Items, @Paused, @Rotation, coalesce(@Weekdays, '{}'), @Dose)
+            insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, paused, rotation, weekdays, dose,
+              cycle, dose_options, full_dose)
+            values (@user, @Title, @Area, @Match, @EveryDays, @AtMinute, @NextDue::date, @Items, @Paused, @Rotation, coalesce(@Weekdays, '{}'), @Dose,
+              coalesce(@Cycle, '{}'), coalesce(@DoseOptions, '{}'), nullif(@FullDose, ''))
             returning id
             """,
-            new { user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose });
+            new { user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose, c.Cycle, c.DoseOptions, c.FullDose });
         var s = (await ScheduleStore.GetAsync(conn, user, id))!;
         return TypedResults.Created($"/schedules/{id}", await ScheduleStore.DtoAsync(conn, s, clock, now));
     }
@@ -89,10 +91,14 @@ public static class ScheduleEndpoints
               weekdays = coalesce(@Weekdays, weekdays),
               dose_set_at = case when @Dose::text is not null and nullif(@Dose, '') is distinct from dose then now() else dose_set_at end,
               dose = case when @Dose::text is null then dose else nullif(@Dose, '') end,
+              cycle_pos = case when @Cycle::int[] is null or @Cycle::int[] = cycle then cycle_pos else 0 end,
+              cycle = coalesce(@Cycle, cycle),
+              dose_options = coalesce(@DoseOptions, dose_options),
+              full_dose = case when @FullDose::text is null then full_dose else nullif(@FullDose, '') end,
               updated_at = now()
             where id = @id and user_id = @user
             """,
-            new { id, user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose });
+            new { id, user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose, c.Cycle, c.DoseOptions, c.FullDose });
         if (n == 0) return TypedResults.NotFound();
         return TypedResults.Ok(await Fresh(conn, user, id, clock, now));
     }
@@ -105,13 +111,14 @@ public static class ScheduleEndpoints
     }
 
     /// <summary>Log the dose now (an entry in the schedule's area), then return the schedule.</summary>
-    private static async Task<Results<Ok<ScheduleDto>, NotFound, ValidationProblem>> Done(Guid id, HttpContext http, ScheduleStore store, TimeProvider time)
+    private static async Task<Results<Ok<ScheduleDto>, NotFound, ValidationProblem>> Done(Guid id, DoneInput? body, HttpContext http, ScheduleStore store, TimeProvider time)
     {
         var user = http.User.UserId();
         await using var conn = await store.Db.OpenAsync();
         if (await ScheduleStore.GetAsync(conn, user, id) is not { } s) return TypedResults.NotFound();
         var now = time.GetUtcNow().UtcDateTime;
-        if (await store.LogDoseAsync(conn, s, now) is { } problem) return Invalid(problem);
+        var dose = body?.Dose?.Trim() is { Length: > 0 } d ? (d.Length > 60 ? d[..60] : d) : null;
+        if (await store.LogDoseAsync(conn, s, now, dose) is { } problem) return Invalid(problem);
         return TypedResults.Ok(await Fresh(conn, user, id, await ScheduleStore.ClockAsync(conn, user), now));
     }
 
@@ -203,7 +210,8 @@ public static class ScheduleEndpoints
         return await ScheduleStore.DtoAsync(conn, s, clock, now);
     }
 
-    private sealed record Cleaned(string Title, string Area, string? Match, int EveryDays, int AtMinute, string? NextDue, string[] Items, bool Paused, string[] Rotation, int[]? Weekdays, string? Dose);
+    private sealed record Cleaned(string Title, string Area, string? Match, int EveryDays, int AtMinute, string? NextDue, string[] Items, bool Paused, string[] Rotation, int[]? Weekdays, string? Dose,
+        int[]? Cycle, string[]? DoseOptions, string? FullDose);
 
     private static Cleaned? Clean(ScheduleInput b, ScheduleStore store, DateOnly today)
     {
@@ -224,7 +232,12 @@ public static class ScheduleEndpoints
             weekdays = every > 1 || days.Length == 7 ? [] : days;
         }
         var dose = b.Dose is null ? null : b.Dose.Trim() is { Length: > 0 } d ? (d.Length > 60 ? d[..60] : d) : "";
-        return new Cleaned(b.Title.Trim(), b.Area, match, every, ScheduleLogic.Minute(b.At)!.Value, next, items, b.Paused, rotation, weekdays, dose);
+        // Repeating gaps only on an every-N-days schedule; one gap is just every N days.
+        int[]? cycle = b.Cycle is null ? null : every == 1 ? [] : b.Cycle.Where(g => g is >= 1 and <= 365).Take(8).ToArray() is { Length: > 1 } g2 ? g2 : [];
+        string[]? options = b.DoseOptions?.Select(o => o.Trim()).Where(o => o.Length > 0).Select(o => o.Length > 30 ? o[..30] : o).Distinct().Take(6).ToArray();
+        var full = b.FullDose is null ? null : b.FullDose.Trim() is { Length: > 0 } f ? (f.Length > 30 ? f[..30] : f) : "";
+        return new Cleaned(b.Title.Trim(), b.Area, match, every, ScheduleLogic.Minute(b.At)!.Value, next, items, b.Paused, rotation, weekdays, dose,
+            cycle, options, full);
     }
 
     private static string? Problem(ScheduleInput b, ScheduleStore store) =>

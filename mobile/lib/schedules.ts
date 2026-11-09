@@ -52,8 +52,9 @@ export async function deleteSchedule(id: string): Promise<void> {
   edited();
 }
 
-export async function markDone(id: string): Promise<Schedule> {
-  const s = must(await api.POST("/schedules/{id}/done", { params: { path: { id } } }));
+/** Log the dose now; `dose` is the amount picked (0.4 ml, full…), else the usual one. */
+export async function markDone(id: string, dose?: string): Promise<Schedule> {
+  const s = must(await api.POST("/schedules/{id}/done", { params: { path: { id } }, ...(dose ? { body: { dose } } : {}) }));
   edited(true);
   return s;
 }
@@ -103,6 +104,7 @@ export function inputOf(s: Schedule): ScheduleInput {
     title: s.title, area: s.area, everyDays: Number(s.everyDays), at: s.at,
     match: s.match, nextDue: s.nextDue, items: s.items, paused: s.paused, rotation: s.rotation,
     weekdays: s.weekdays.map(Number), dose: s.nextDose ?? "",
+    cycle: s.cycle.map(Number), doseOptions: s.doseOptions, fullDose: s.fullDose ?? "",
   };
 }
 
@@ -140,10 +142,12 @@ export function daysLabel(days: number[]): string {
   return run ? `${DAY[d[0]]}–${DAY[d[d.length - 1]]}` : d.map((x) => DAY[x]).join(", ");
 }
 
-export function cadenceLabel(s: Pick<Schedule, "everyDays" | "at"> & { weekdays?: (number | string)[] }): string {
+export function cadenceLabel(s: Pick<Schedule, "everyDays" | "at"> & { weekdays?: (number | string)[]; cycle?: (number | string)[] }): string {
   const n = Number(s.everyDays);
   const days = (s.weekdays ?? []).map(Number);
-  const every = n === 1 ? (days.length ? daysLabel(days) : "Daily") : n === 7 ? "Weekly" : `Every ${n} days`;
+  const cycle = (s.cycle ?? []).map(Number);
+  const every = n > 1 && cycle.length > 1 ? `Every ${cycle.join(", then ")} days`
+    : n === 1 ? (days.length ? daysLabel(days) : "Daily") : n === 7 ? "Weekly" : `Every ${n} days`;
   return `${every} · ${timeLabel(s.at)}`;
 }
 
