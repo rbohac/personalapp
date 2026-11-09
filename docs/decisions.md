@@ -486,3 +486,22 @@ certificates and recent logs.
 Also: going back online reloads every screen at most every 20 s (a flaky
 connection was reloading Home on each flip), and a successful read no longer
 re-renders Home each time.
+
+## 2026-11-09 — Testosterone twice a week: 4 days, then 3, and a full shot for a week away
+
+Half dose twice a week instead of a full one weekly. A schedule can now
+carry repeating gaps (`cycle`, here {4,3}), amounts to pick from when
+logging (`dose_options`: 0.4 ml, 0.5 ml, or a custom amount) and a full
+dose (`full_dose`: 0.8 ml).
+
+- **Logging asks how much.** Done on Home opens the schedule with a picker;
+  it shows the next date each choice leads to before you log.
+- **A normal dose waits the next gap and moves the cycle on; a full shot
+  waits `every_days` (a week) and doesn't.** So Mon/Fri stays Mon/Fri after
+  a week away. Counted from the dose, so a late one resets, like the weekly
+  shots always have; there's no "moved to Tuesdays" question for a cycle.
+- **The usual amount skips a full shot**, so the default after a trip is the
+  half dose again, not 0.8.
+- A push's Done (no amount) logs the usual dose.
+- Migration 0016 sets the owner's testosterone up: due today (or in 4 days
+  if today's was already logged), 0.4 ml by default.

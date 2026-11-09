@@ -46,7 +46,7 @@ export default function ScheduleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === "new";
   const [form, setForm] = useState<ScheduleInput | null>(
-    isNew ? { title: "", area: "medications", everyDays: 1, at: "08:00", match: null, nextDue: isoDay(new Date()), items: [], paused: false, rotation: [], weekdays: [], dose: "" } : null,
+    isNew ? { title: "", area: "medications", everyDays: 1, at: "08:00", match: null, nextDue: isoDay(new Date()), items: [], paused: false, rotation: [], weekdays: [], dose: "", cycle: [], doseOptions: [], fullDose: "" } : null,
   );
   const [sections, setSections] = useState<Section[]>([{ title: "", text: "" }]);
   const [areas, setAreas] = useState<Area[]>([]);
@@ -99,6 +99,9 @@ export default function ScheduleScreen() {
       rotation: form.rotation ?? [],
       weekdays: Number(form.everyDays) === 1 ? (form.weekdays ?? []).map(Number) : [],
       dose: (form.dose ?? "").trim(),
+      cycle: Number(form.everyDays) > 1 ? (form.cycle ?? []).map(Number) : [],
+      doseOptions: form.doseOptions ?? [],
+      fullDose: (form.fullDose ?? "").trim(),
     };
     try {
       if (isNew) await createSchedule(body);
@@ -227,6 +230,39 @@ export default function ScheduleScreen() {
         style={[s.field, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
       />
       <Text style={{ color: c.muted, fontSize: 13 }}>Logging a different dose (“tirzepatide 35 units”) updates this by itself.</Text>
+
+      {every > 1 ? (
+        <>
+          <Label c={c} text="ALTERNATING GAPS (OPTIONAL)" />
+          <TextInput
+            defaultValue={(form.cycle ?? []).join(", ")}
+            onChangeText={(t) => set({ cycle: t.split(/[,\s]+/).map(Number).filter((n) => Number.isInteger(n) && n > 0) })}
+            placeholder="e.g. 4, 3 — twice a week"
+            placeholderTextColor={c.muted}
+            keyboardType="numbers-and-punctuation"
+            style={[s.field, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
+          />
+          <Text style={{ color: c.muted, fontSize: 13 }}>Days between doses, repeating. Blank: every {every} days.</Text>
+
+          <Label c={c} text="AMOUNTS TO PICK FROM (OPTIONAL)" />
+          <TextInput
+            defaultValue={(form.doseOptions ?? []).join(", ")}
+            onChangeText={(t) => set({ doseOptions: t.split(",").map((x) => x.trim()).filter(Boolean) })}
+            placeholder="e.g. 0.4 ml, 0.5 ml"
+            placeholderTextColor={c.muted}
+            style={[s.field, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
+          />
+          <Label c={c} text="FULL SHOT (OPTIONAL)" />
+          <TextInput
+            value={form.fullDose ?? ""}
+            onChangeText={(fullDose) => set({ fullDose })}
+            placeholder="e.g. 0.8 ml"
+            placeholderTextColor={c.muted}
+            style={[s.field, { color: c.ink, borderColor: c.line, backgroundColor: c.card }]}
+          />
+          <Text style={{ color: c.muted, fontSize: 13 }}>Logging the full shot waits every {every} days for the next one instead of the next gap.</Text>
+        </>
+      ) : null}
 
       <Label c={c} text="WHAT TO TAKE" />
       <Text style={{ color: c.muted, fontSize: 13 }}>One per line. A note in brackets shows under the name: “Vyvanse (skip some days)”.</Text>

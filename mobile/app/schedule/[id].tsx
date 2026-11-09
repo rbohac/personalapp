@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 
+import { DoseLogger } from "../../components/DoseLogger";
 import { ItemChecklist } from "../../components/ItemChecklist";
 import { useRemindPicker } from "../../components/RemindPicker";
 import type { Entry, Schedule } from "../../lib/api";
@@ -71,10 +72,10 @@ export default function ScheduleView() {
     }
   }
 
-  async function done() {
+  async function done(dose?: string) {
     setBusy(true);
     try {
-      await markDone(id);
+      await markDone(id, dose);
     } catch (e) {
       Alert.alert("Not logged", e instanceof Error ? e.message : "The server didn't take it.");
     } finally {
@@ -95,6 +96,7 @@ export default function ScheduleView() {
   const next = nextDoseLabel(sch);
   const canLog = st !== "done" && st !== "paused" && st !== "finished";
   const byItem = sch.today.length > 0;
+  const choices = sch.doseOptions.length > 0 || !!sch.fullDose;
   const open = sch.today.filter((m) => m.state === "open").map((m) => m.item);
   const days = byItem ? groupByDay(history) : [];
 
@@ -117,12 +119,14 @@ export default function ScheduleView() {
         {sch.nextDue ? <Line c={c} label="Next due" value={shortDate(sch.nextDue)} /> : null}
         {next ? <Line c={c} label="Next dose" value={next} /> : null}
         <Line c={c} label="Last taken" value={sch.lastDoneAt ? whenLabel(sch.lastDoneAt) : "Not logged yet"} />
-        {canLog && !byItem ? (
+        {canLog && !byItem && !choices ? (
           <Pressable onPress={() => void done()} disabled={busy} style={[s.button, { backgroundColor: c.accent, opacity: busy ? 0.5 : 1 }]}>
             <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>{st === "upcoming" ? "Log one now" : "Done"}</Text>
           </Pressable>
         ) : null}
       </View>
+
+      {canLog && choices && !byItem ? <DoseLogger c={c} sch={sch} busy={busy} onLog={(dose) => void done(dose)} /> : null}
 
       {byItem ? (
         <>

@@ -168,15 +168,17 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// </summary>
     internal static async Task<string?> NextDoseAsync(NpgsqlConnection conn, ScheduleRow s)
     {
-        var logged = await conn.QuerySingleOrDefaultAsync<(string Dose, DateTime At)?>(
+        // A full shot (the week-long one) isn't the usual amount: skip it.
+        var recent = await conn.QueryAsync<(string Dose, DateTime At)>(
             """
             select data->>'dose', at from entries
             where user_id = @user and area = @area
               and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
               and coalesce(data->>'event', 'taken') = 'taken' and data->>'dose' is not null
-            order by at desc limit 1
+            order by at desc limit 10
             """,
             new { user = s.UserId, area = s.Area, match = Escape(s.MatchText) });
+        (string Dose, DateTime At)? logged = recent.Where(r => !s.IsFull(r.Dose)).Select(r => ((string, DateTime)?)r).FirstOrDefault();
         if (logged is not { } l) return s.Dose;
         return s.Dose is not null && s.DoseSetAt is { } set && set > l.At ? s.Dose : l.Dose;
     }
@@ -215,6 +217,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         // A new one with a date counts from a day before it was made, so a
         // dose taken that morning, before the schedule existed, still counts.
         DateTime? since = s.LastEntryAt ?? (s.NextDue is null ? null : s.CreatedAt.AddDays(-1));
+        if (s.Cycles) return await SyncCycleAsync(conn, s, clock, since);
         var found = await conn.QuerySingleAsync<(DateTime? Dose, int Count)>(
             """
             select max(at), count(*)::int from entries
@@ -245,6 +248,53 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         return shifted is not null;
     }
 
+    /// <summary>
+    /// A schedule with repeating gaps (testosterone: 4 days, then 3). Each
+    /// normal dose waits the next gap and moves the cycle on; a full dose waits
+    /// every_days (a week) and leaves the cycle where it was. Counted from the
+    /// dose, so a late one resets — the way the weekly ones work.
+    /// </summary>
+    private static async Task<bool> SyncCycleAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime? since)
+    {
+        var doses = (await conn.QueryAsync<(DateTime At, string? Dose)>(
+            """
+            select at, data->>'dose' from entries
+            where user_id = @user and area = @area
+              and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
+              and coalesce(data->>'event', 'taken') = 'taken'
+              and (@since::timestamptz is null or at > @since)
+            order by at
+            """,
+            new { user = s.UserId, area = s.Area, match = Escape(s.MatchText), since })).ToList();
+        if (doses.Count == 0) return false;
+
+        var pos = s.CyclePos;
+        var gap = s.EveryDays;
+        foreach (var d in doses)
+        {
+            if (s.IsFull(d.Dose)) gap = s.EveryDays;
+            else { gap = s.Cycle[pos % s.Cycle.Length]; pos++; }
+        }
+        var last = doses[^1].At;
+        var next = ScheduleLogic.Iso(clock.Today(last).AddDays(gap));
+        var done = s.DosesDone + doses.Count;
+        pos %= s.Cycle.Length;
+        await conn.ExecuteAsync(
+            """
+            update schedules set next_due = @next::date, shifted_from = null, last_entry_at = @last,
+              doses_done = @done, cycle_pos = @pos, snoozed_until = null, updated_at = now()
+            where id = @id
+            """,
+            new { s.Id, next, last, done, pos });
+        s.NextDue = next;
+        s.ShiftedFrom = null;
+        s.LastEntryAt = last;
+        s.DosesDone = done;
+        s.CyclePos = pos;
+        s.SnoozedUntil = null;
+        return false;
+    }
+
     /// <summary>The schedule as the app sees it. Assumes <see cref="SyncAsync"/> has run.</summary>
     internal static async Task<ScheduleDto> DtoAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow)
     {
@@ -263,7 +313,8 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         }
         return new ScheduleDto(s.Id, s.Title, s.Area, s.MatchText, s.EveryDays, ScheduleLogic.Hhmm(s.AtMinute), s.NextDue,
             s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status, marks, s.Rotation,
-            await NextSiteAsync(conn, s, clock, utcNow), await NextDoseAsync(conn, s), s.Weekdays);
+            await NextSiteAsync(conn, s, clock, utcNow), await NextDoseAsync(conn, s), s.Weekdays,
+            s.Cycle, s.DoseOptions, s.FullDose, s.NextGap);
     }
 
     private sealed record MarkRow(string Item, string State, Guid? EntryId, DateTime? RemindAt);
@@ -351,7 +402,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// "Done" from the app or a notification: log the entry the schedule
     /// would have matched, so the history reads the same as saying it.
     /// </summary>
-    internal async Task<string?> LogDoseAsync(NpgsqlConnection conn, ScheduleRow s, DateTime utcNow)
+    internal async Task<string?> LogDoseAsync(NpgsqlConnection conn, ScheduleRow s, DateTime utcNow, string? dose = null)
     {
         // A list: "Took all" ticks every item still open, one entry each.
         if (s.ByItem)
@@ -367,7 +418,9 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         if (area.Fields.Any(f => f.Key == "event")) raw["event"] = "taken";
         // Done on a rotating shot logs the side it was due on, and the dose.
         if (await NextSiteAsync(conn, s, await ClockAsync(conn, s.UserId), utcNow) is { } site) raw["site"] = site;
-        if (area.Fields.Any(f => f.Key == "dose") && await NextDoseAsync(conn, s) is { } dose) raw["dose"] = dose;
+        // The amount picked when logging (0.4, 0.5, full), else the usual one.
+        if (area.Fields.Any(f => f.Key == "dose") && (dose?.Trim() is { Length: > 0 } picked ? picked : await NextDoseAsync(conn, s)) is { } amount)
+            raw["dose"] = amount;
         var (data, problems) = catalog.Validate(area, raw);
         if (problems.Count > 0) return string.Join(" ", problems);
         await conn.ExecuteAsync(
