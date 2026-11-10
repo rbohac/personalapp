@@ -28,3 +28,10 @@ spelled right and a missing dose can be filled in:
 - Nose sprays — morning and night; "did my nose sprays", "nasal spray",
   "sprayed my nose" are one entry, medication "nose spray" (whatever brand
   was named goes in `notes`)
+
+## Skipped
+
+"Skipped my Vyvanse today", "not taking the water pill, flying" is an
+entry with event "skipped" (the reason goes in `notes`). It's how skips are
+counted later ("how often did I skip Vyvanse?"), so never drop one. Taking
+it is event "taken", the default.

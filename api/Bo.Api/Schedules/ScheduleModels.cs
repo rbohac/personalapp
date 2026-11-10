@@ -30,7 +30,7 @@ public record ScheduleDto(
 public record ItemMark(string Item, string State, DateTime? RemindAt, bool ByEntry);
 
 /// <summary>Tick one item: taken, open (untick), skipped, or later (needs RemindAt).</summary>
-public record ItemInput(string Item, string State, DateTimeOffset? RemindAt = null);
+public record ItemInput(string Item, string State, DateTimeOffset? RemindAt = null, string? Reason = null);
 
 /// <param name="State">done (today's is logged), later (due later today), due, overdue, upcoming (a later day), paused, finished (a course is over).</param>
 /// <param name="DueAt">When the current or next dose is due (UTC).</param>
@@ -42,6 +42,9 @@ public record ScheduleInput(
     string Title, string Area, int EveryDays, string At, string? Match = null, string? NextDue = null,
     string[]? Items = null, bool Paused = false, string[]? Rotation = null, int[]? Weekdays = null, string? Dose = null,
     int[]? Cycle = null, string[]? DoseOptions = null, string? FullDose = null);
+
+/// <summary>Skip a dose on purpose; the reason is kept with it ("flying today").</summary>
+public record SkipInput(string? Reason = null);
 
 /// <summary>Done, optionally with the amount taken (else the usual dose).</summary>
 public record DoneInput(string? Dose = null);

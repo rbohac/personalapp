@@ -8,7 +8,7 @@ import { useRemindPicker } from "../../components/RemindPicker";
 import type { Entry, Schedule } from "../../lib/api";
 import { whenLabel } from "../../lib/dates";
 import { onChanged } from "../../lib/events";
-import { cadenceLabel, hasDoseChoices, itemName, listSchedules, markDone, nextDoseLabel, scheduleHistory, setItem, shortDate, type ItemState } from "../../lib/schedules";
+import { canSkipArea, confirmSkip, skipDose, unskip, cadenceLabel, hasDoseChoices, itemName, listSchedules, markDone, nextDoseLabel, scheduleHistory, setItem, shortDate, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
 /**
@@ -64,11 +64,33 @@ export default function ScheduleView() {
     remind.ask(items.length === 1 ? `Remind me to take ${itemName(items[0])}` : `Remind me about ${items.length} items`);
   }
 
-  async function tick(item: string, state: ItemState) {
+  async function tick(item: string, state: ItemState, reason?: string) {
     try {
-      setSch(await setItem(id, item, state));
+      setSch(await setItem(id, item, state, undefined, reason));
     } catch (e) {
       Alert.alert("Not changed", e instanceof Error ? e.message : "");
+    }
+  }
+
+  async function skip(reason?: string) {
+    setBusy(true);
+    try {
+      setSch(await skipDose(id, reason));
+    } catch (e) {
+      Alert.alert("Not skipped", e instanceof Error ? e.message : "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function undoSkip() {
+    setBusy(true);
+    try {
+      setSch(await unskip(id));
+    } catch (e) {
+      Alert.alert("Couldn't undo", e instanceof Error ? e.message : "");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -97,6 +119,12 @@ export default function ScheduleView() {
   const canLog = st !== "done" && st !== "paused" && st !== "finished";
   const byItem = sch.today.length > 0;
   const choices = hasDoseChoices(sch);
+  const isSkip = (e: Entry) => e.data.event === "skipped";
+  const todayKey = new Date().toDateString();
+  // A skip today, linked to this schedule's own Skip (raw "Skipped: <title>"), can be undone.
+  const skippedToday = history.some((e) => isSkip(e) && new Date(e.at).toDateString() === todayKey && (e.raw ?? "").startsWith("Skipped: "));
+  const skips30 = history.filter((e) => isSkip(e) && Date.now() - new Date(e.at).getTime() < 30 * 864e5).length;
+  const canSkip = !byItem && canSkipArea(sch.area) && st !== "upcoming" && st !== "paused" && st !== "finished" && !skippedToday && st !== "done";
   const open = sch.today.filter((m) => m.state === "open").map((m) => m.item);
   const days = byItem ? groupByDay(history) : [];
 
@@ -119,6 +147,7 @@ export default function ScheduleView() {
         {sch.nextDue ? <Line c={c} label="Next due" value={shortDate(sch.nextDue)} /> : null}
         {next ? <Line c={c} label="Next dose" value={next} /> : null}
         <Line c={c} label="Last taken" value={sch.lastDoneAt ? whenLabel(sch.lastDoneAt) : "Not logged yet"} />
+        {skips30 > 0 ? <Line c={c} label="Skipped, last 30 days" value={`${skips30}×`} /> : null}
         {canLog && !byItem && !choices ? (
           <Pressable onPress={() => void done()} disabled={busy} style={[s.button, { backgroundColor: c.accent, opacity: busy ? 0.5 : 1 }]}>
             <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>{st === "upcoming" ? "Log one now" : "Done"}</Text>
@@ -128,10 +157,21 @@ export default function ScheduleView() {
 
       {canLog && choices && !byItem ? <DoseLogger c={c} sch={sch} busy={busy} onLog={(dose) => void done(dose)} /> : null}
 
+      {canSkip ? (
+        <Pressable onPress={() => confirmSkip(sch.title, (reason) => void skip(reason))} disabled={busy} style={[s.button, { borderWidth: 1, borderColor: c.line }]}>
+          <Text style={{ color: c.muted, fontSize: 16 }}>Skip this one</Text>
+        </Pressable>
+      ) : null}
+      {skippedToday && !byItem ? (
+        <Pressable onPress={() => void undoSkip()} disabled={busy} style={[s.button, { borderWidth: 1, borderColor: c.line }]}>
+          <Text style={{ color: c.accent, fontSize: 16 }}>Skipped today · Undo</Text>
+        </Pressable>
+      ) : null}
+
       {byItem ? (
         <>
           <Text style={[s.heading, { color: c.muted }]}>TODAY · TAP TO TICK, HOLD FOR MORE</Text>
-          <ItemChecklist c={c} sch={sch} onSet={(item, state) => void tick(item, state)} onAskWhen={askWhen} />
+          <ItemChecklist c={c} sch={sch} onSet={(item, state, reason) => void tick(item, state, reason)} onAskWhen={askWhen} />
           {open.length > 0 ? (
             <View style={{ flexDirection: "row", gap: 10 }}>
               <Pressable onPress={() => void done()} disabled={busy} style={[s.button, { flex: 1, backgroundColor: c.accent, opacity: busy ? 0.5 : 1 }]}>
@@ -152,15 +192,18 @@ export default function ScheduleView() {
           ? days.map((d) => (
               <View key={d.day} style={[s.row, { borderBottomColor: c.line }]}>
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ color: c.ink, fontSize: 15 }}>{d.count} taken</Text>
-                  <Text style={{ color: c.muted, fontSize: 13 }} numberOfLines={2}>{d.names.join(", ")}</Text>
+                  <Text style={{ color: c.ink, fontSize: 15 }}>{d.count} taken{d.skipped.length ? ` · ${d.skipped.length} skipped` : ""}</Text>
+                  {d.names.length ? <Text style={{ color: c.muted, fontSize: 13 }} numberOfLines={2}>{d.names.join(", ")}</Text> : null}
+                  {d.skipped.length ? <Text style={{ color: c.late, fontSize: 13 }} numberOfLines={2}>Skipped: {d.skipped.join(", ")}</Text> : null}
                 </View>
                 <Text style={{ color: c.muted, fontSize: 13 }}>{d.label}</Text>
               </View>
             ))
           : history.map((e) => (
               <Pressable key={e.id} onPress={() => router.push({ pathname: "/entry/[id]", params: { id: e.id } })} style={[s.row, { borderBottomColor: c.line }]}>
-                <Text style={{ color: c.ink, fontSize: 15, flex: 1 }} numberOfLines={1}>{e.summary.replace(/^Taken · /, "")}</Text>
+                <Text style={{ color: isSkip(e) ? c.late : c.ink, fontSize: 15, flex: 1 }} numberOfLines={1}>
+                  {isSkip(e) ? `Skipped${e.data.notes ? ` · ${String(e.data.notes)}` : ""}` : e.summary.replace(/^Taken · /, "")}
+                </Text>
                 <Text style={{ color: c.muted, fontSize: 13 }}>{whenLabel(e.at)}</Text>
               </Pressable>
             ))}
@@ -172,17 +215,21 @@ export default function ScheduleView() {
 
 /** A daily list's history, one row per day: how many were taken and which. */
 function groupByDay(entries: Entry[]) {
-  const out: { day: string; label: string; count: number; names: string[] }[] = [];
+  const out: { day: string; label: string; count: number; names: string[]; skipped: string[] }[] = [];
   for (const e of entries) {
     const d = new Date(e.at);
     const day = d.toDateString();
     let row = out.find((r) => r.day === day);
     if (!row) {
-      row = { day, label: d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }), count: 0, names: [] };
+      row = { day, label: d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }), count: 0, names: [], skipped: [] };
       out.push(row);
     }
-    row.count++;
     const name = typeof e.data.medication === "string" ? e.data.medication : e.summary;
+    if (e.data.event === "skipped") {
+      if (!row.skipped.includes(name)) row.skipped.push(name);
+      continue;
+    }
+    row.count++;
     if (!row.names.includes(name)) row.names.push(name);
   }
   return out;

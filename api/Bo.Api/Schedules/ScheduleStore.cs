@@ -67,13 +67,13 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// <paramref name="window"/> (one of several daily schedules on the same
     /// medicine), only its own Done entries and doses said in its part of the day.
     /// </summary>
-    internal static Task<DateTime?> LatestDoseAsync(NpgsqlConnection conn, ScheduleRow s, DateTime? since = null, DoseWindow? window = null) =>
+    internal static Task<DateTime?> LatestDoseAsync(NpgsqlConnection conn, ScheduleRow s, DateTime? since = null, DoseWindow? window = null, string evt = "taken") =>
         conn.ExecuteScalarAsync<DateTime?>(
             """
             select max(at) from entries
             where user_id = @user and area = @area
               and (@match::text is null or data->>'medication' ilike '%' || @match || '%' escape '\')
-              and coalesce(data->>'event', 'taken') = 'taken'
+              and coalesce(data->>'event', 'taken') = @evt
               and (@since::timestamptz is null or at >= @since)
               and (not @windowed or schedule_id = @id or (schedule_id is null
                 and extract(hour from at at time zone @zone) * 60 + extract(minute from at at time zone @zone) >= @start
@@ -81,7 +81,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             """,
             new
             {
-                user = s.UserId, area = s.Area, match = Escape(s.MatchText), since, id = s.Id,
+                user = s.UserId, area = s.Area, match = Escape(s.MatchText), since, id = s.Id, evt,
                 windowed = window is not null, zone = window?.Zone ?? "UTC", start = window?.Start ?? 0, end = window?.End ?? 1440,
             });
 
@@ -309,7 +309,11 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         else
         {
             var doneToday = s.Daily && last is { } l && l >= clock.StartOfToday(utcNow) ? last : null;
-            status = ScheduleLogic.StatusOf(s, clock, utcNow, doneToday);
+            // Skipped today (on purpose, confirmed): settled for the day, no nudge.
+            var skipped = s.Daily && doneToday is null
+                && await LatestDoseAsync(conn, s, clock.StartOfToday(utcNow), await WindowAsync(conn, s, clock), "skipped") is not null;
+            status = skipped ? new ScheduleStatus("done", clock.Utc(clock.Today(utcNow), s.AtMinute), 0, "Skipped today")
+                : ScheduleLogic.StatusOf(s, clock, utcNow, doneToday);
         }
         return new ScheduleDto(s.Id, s.Title, s.Area, s.MatchText, s.EveryDays, ScheduleLogic.Hhmm(s.AtMinute), s.NextDue,
             s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status, marks, s.Rotation,
@@ -330,18 +334,21 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             "select item, state, entry_id as entryid, remind_at as remindat from schedule_marks where schedule_id = @id and day = @day::date",
             new { s.Id, day = ScheduleLogic.Iso(clock.Today(utcNow)) })).ToDictionary(r => r.Item);
         var linked = rows.Values.Where(r => r.EntryId is not null).Select(r => r.EntryId!.Value).ToHashSet();
-        var said = (await conn.QueryAsync<(Guid Id, string? Medication)>(
+        var today = (await conn.QueryAsync<(Guid Id, string? Medication, string Event)>(
             """
-            select id, data->>'medication' from entries
-            where user_id = @user and area = @area and at >= @start and coalesce(data->>'event', 'taken') = 'taken'
+            select id, data->>'medication', coalesce(data->>'event', 'taken') from entries
+            where user_id = @user and area = @area and at >= @start and coalesce(data->>'event', 'taken') in ('taken', 'skipped')
             """,
             new { user = s.UserId, area = s.Area, start = clock.StartOfToday(utcNow) }))
-            .Where(e => !linked.Contains(e.Id)).Select(e => e.Medication).ToList();
+            .Where(e => !linked.Contains(e.Id)).ToList();
+        var said = today.Where(e => e.Event == "taken").Select(e => e.Medication).ToList();
+        var saidSkipped = today.Where(e => e.Event == "skipped").Select(e => e.Medication).ToList();
         var wholeList = s.MatchText is { Length: > 0 } m && said.Any(x => x?.Contains(m, StringComparison.OrdinalIgnoreCase) == true);
 
         return s.ItemNames.Select(item =>
             rows.TryGetValue(item, out var r) ? new ItemMark(item, r.State, r.RemindAt, false)
             : wholeList || said.Any(x => ScheduleLogic.Names(x, item)) ? new ItemMark(item, "taken", null, true)
+            : saidSkipped.Any(x => ScheduleLogic.Names(x, item)) ? new ItemMark(item, "skipped", null, true)
             : new ItemMark(item, "open", null, false)).ToArray();
     }
 
@@ -350,7 +357,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
     /// unticking removes that entry); skipped and later log nothing. Returns a
     /// problem in words, or null.
     /// </summary>
-    internal async Task<string?> SetItemAsync(NpgsqlConnection conn, ScheduleRow s, string item, string state, DateTime? remindAt, Clock clock, DateTime utcNow)
+    internal async Task<string?> SetItemAsync(NpgsqlConnection conn, ScheduleRow s, string item, string state, DateTime? remindAt, Clock clock, DateTime utcNow, string? reason = null)
     {
         if (!s.ByItem || !s.ItemNames.Contains(item)) return $"\"{item}\" isn't on this list.";
         if (state is not ("taken" or "open" or "skipped" or "later")) return "State is taken, open, skipped or later.";
@@ -373,17 +380,19 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         }
 
         Guid? entryId = null;
-        if (state == "taken")
+        // Taken and skipped both log an entry (a skip is counted later); later and open don't.
+        if (state is "taken" or "skipped")
         {
             var area = catalog.Find(s.Area);
             if (area is null) return $"No area \"{s.Area}\".";
             var raw = new Dictionary<string, string?> { ["medication"] = ScheduleLogic.Name(item) };
-            if (area.Fields.Any(f => f.Key == "event")) raw["event"] = "taken";
+            if (area.Fields.Any(f => f.Key == "event")) raw["event"] = state;
+            if (state == "skipped" && reason is { Length: > 0 } && area.Fields.Any(f => f.Key == "notes")) raw["notes"] = reason;
             var (data, problems) = catalog.Validate(area, raw);
             if (problems.Count > 0) return string.Join(" ", problems);
             entryId = await conn.ExecuteScalarAsync<Guid>(
                 "insert into entries (user_id, area, at, data, source, raw) values (@user, @area, @at, @data::jsonb, 'manual', @raw) returning id",
-                new { user = s.UserId, area = s.Area, at = utcNow, data = JsonSerializer.Serialize(data), raw = $"Ticked: {item}" }, tx);
+                new { user = s.UserId, area = s.Area, at = utcNow, data = JsonSerializer.Serialize(data), raw = $"{(state == "taken" ? "Ticked" : "Skipped")}: {item}" }, tx);
         }
         await conn.ExecuteAsync(
             """
@@ -427,6 +436,67 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
             "insert into entries (user_id, area, at, data, source, raw, schedule_id) values (@user, @area, @at, @data::jsonb, 'manual', @raw, @id)",
             new { user = s.UserId, area = s.Area, at = utcNow, data = JsonSerializer.Serialize(data), raw = $"Done: {s.Title}", id = s.Id });
         return null;
+    }
+
+    /// <summary>
+    /// Skip the dose on purpose (confirmed in the app): logs an entry with
+    /// event "skipped" (and the reason), linked to the schedule, so it's
+    /// counted later. A daily one is settled for today; an every-N one moves
+    /// on as if the gap had passed (a cycle moves to its next gap).
+    /// </summary>
+    internal async Task<string?> SkipAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow, string? reason)
+    {
+        if (s.ByItem) return "Skip items one at a time on a list.";
+        var area = catalog.Find(s.Area);
+        if (area is null) return $"No area \"{s.Area}\".";
+        if (!area.Fields.Any(f => f.Key == "event" && f.Options?.Contains("skipped") == true)) return $"{area.Name} can't record a skip.";
+        // An every-N dose can be skipped once it's due, not ahead of time (skip Friday's on Friday).
+        if (!s.Daily && ScheduleLogic.Day(s.NextDue) is { } nd && nd > clock.Today(utcNow))
+            return $"Not due until {nd:ddd MMM d} — skip it then.";
+        var raw = new Dictionary<string, string?> { ["medication"] = s.MatchText ?? s.Title, ["event"] = "skipped" };
+        if (reason is { Length: > 0 } && area.Fields.Any(f => f.Key == "notes")) raw["notes"] = reason;
+        var (data, problems) = catalog.Validate(area, raw);
+        if (problems.Count > 0) return string.Join(" ", problems);
+        await using var tx = await conn.BeginTransactionAsync();
+        await conn.ExecuteAsync(
+            "insert into entries (user_id, area, at, data, source, raw, schedule_id) values (@user, @area, @at, @data::jsonb, 'manual', @raw, @id)",
+            new { user = s.UserId, area = s.Area, at = utcNow, data = JsonSerializer.Serialize(data), raw = $"Skipped: {s.Title}", id = s.Id }, tx);
+        if (!s.Daily)
+        {
+            var next = ScheduleLogic.Iso(clock.Today(utcNow).AddDays(s.NextGap));
+            await conn.ExecuteAsync(
+                """
+                update schedules set next_due = @next::date, shifted_from = null, snoozed_until = null,
+                  cycle_pos = case when cardinality(cycle) > 0 then (cycle_pos + 1) % cardinality(cycle) else cycle_pos end,
+                  updated_at = now()
+                where id = @id
+                """,
+                new { s.Id, next }, tx);
+        }
+        await tx.CommitAsync();
+        return null;
+    }
+
+    /// <summary>Undo today's skip: the entry goes, and an every-N schedule is due again on the day it was skipped.</summary>
+    internal static async Task<bool> UnskipAsync(NpgsqlConnection conn, ScheduleRow s, Clock clock, DateTime utcNow)
+    {
+        var at = await conn.ExecuteScalarAsync<DateTime?>(
+            """
+            delete from entries where user_id = @user and schedule_id = @id and data->>'event' = 'skipped' and at >= @start
+            returning at
+            """,
+            new { user = s.UserId, s.Id, start = clock.StartOfToday(utcNow) });
+        if (at is null) return false;
+        if (!s.Daily)
+            await conn.ExecuteAsync(
+                """
+                update schedules set next_due = @day::date,
+                  cycle_pos = case when cardinality(cycle) > 0 then (cycle_pos + cardinality(cycle) - 1) % cardinality(cycle) else cycle_pos end,
+                  updated_at = now()
+                where id = @id
+                """,
+                new { s.Id, day = ScheduleLogic.Iso(clock.Today(at.Value)) });
+        return true;
     }
 
     internal bool IsLogArea(string id) => catalog.Find(id) is { Kind: "log" };

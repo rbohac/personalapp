@@ -2,7 +2,7 @@ import { ActionSheetIOS, Alert, Pressable, StyleSheet, Text, View } from "react-
 import { Ionicons } from "@expo/vector-icons";
 
 import type { ItemMark, Schedule } from "../lib/api";
-import { itemName, type ItemState } from "../lib/schedules";
+import { confirmSkip, itemName, type ItemState } from "../lib/schedules";
 import type { Palette } from "../lib/theme";
 
 /** A schedule's list split into its sections: lines starting "# " are headings. */
@@ -28,7 +28,7 @@ export function ItemChecklist({
 }: {
   c: Palette;
   sch: Schedule;
-  onSet: (item: string, state: ItemState) => void;
+  onSet: (item: string, state: ItemState, reason?: string) => void;
   onAskWhen: (items: string[]) => void;
 }) {
   const marks = new Map(sch.today.map((m) => [m.item, m]));
@@ -45,7 +45,7 @@ export function ItemChecklist({
     ActionSheetIOS.showActionSheetWithOptions({ title: m.item, options, cancelButtonIndex: options.length - 1 }, (i) => {
       const pick = options[i];
       if (pick === "Taken") onSet(m.item, "taken");
-      else if (pick === "Skip today") onSet(m.item, "skipped");
+      else if (pick === "Skip today") confirmSkip(itemName(m.item), (reason) => onSet(m.item, "skipped", reason));
       else if (pick === "Remind me later…") onAskWhen([m.item]);
       else if (pick === "Not yet (untick)") onSet(m.item, "open");
     });

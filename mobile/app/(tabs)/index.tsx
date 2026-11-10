@@ -17,7 +17,7 @@ import { cacheGet, pendingAll, saveSnapshot } from "../../lib/local";
 import { clearFailed, flush, useSync, wake } from "../../lib/offline";
 import { rollGoals, rollSchedules } from "../../lib/rollover";
 import { onChanged } from "../../lib/events";
-import { acceptDay, cadenceLabel, hasDoseChoices, itemName, keepDay, listSchedules, markDone, nextDoseLabel, setItem, shortDate, weekday, type ItemState } from "../../lib/schedules";
+import { acceptDay, cadenceLabel, canSkipArea, confirmSkip, hasDoseChoices, skipDose, itemName, keepDay, listSchedules, markDone, nextDoseLabel, setItem, shortDate, weekday, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
 /**
@@ -432,6 +432,15 @@ function Card({ c, sch, busy, onAct, onAskWhen }: { c: Palette; sch: Schedule; b
               {hasDoseChoices(sch) ? "Log dose…" : st === "upcoming" ? "Log it now" : byItem ? "Took all" : "Done"}
             </Text>
           </Pressable>
+          {!byItem && canSkipArea(sch.area) && st !== "upcoming" ? (
+            <Pressable
+              onPress={() => confirmSkip(sch.title, (reason) => onAct(sch.id, (id) => skipDose(id, reason)))}
+              disabled={busy}
+              style={[s.done, { borderColor: c.line }]}
+            >
+              <Text style={{ color: c.muted, fontSize: 15 }}>Skip</Text>
+            </Pressable>
+          ) : null}
           {byItem && !open && left > 0 ? (
             <Pressable onPress={() => setOpen(true)} style={[s.done, { borderColor: c.line }]}>
               <Text style={{ color: c.ink, fontSize: 15 }}>Tick some</Text>
@@ -470,7 +479,7 @@ function ItemChips({ c, sch, onAct, onAskWhen }: { c: Palette; sch: Schedule; on
     ActionSheetIOS.showActionSheetWithOptions({ title: m.item, options, cancelButtonIndex: options.length - 1 }, (i) => {
       const pick = options[i];
       if (pick === "Taken") set(m, "taken");
-      else if (pick === "Skip today") set(m, "skipped");
+      else if (pick === "Skip today") confirmSkip(itemName(m.item), (reason) => onAct(sch.id, (id) => setItem(id, m.item, "skipped", undefined, reason)));
       else if (pick === "Remind me later…") onAskWhen(sch.id, [m.item]);
       else if (pick === "Not yet (untick)") set(m, "open");
     });
