@@ -23,6 +23,8 @@ public static class ScheduleEndpoints
         g.MapDelete("/{id:guid}", Delete);
         g.MapPost("/{id:guid}/done", Done);
         g.MapPost("/{id:guid}/snooze", Snooze);
+        g.MapPost("/{id:guid}/skip", Skip);
+        g.MapDelete("/{id:guid}/skip", Unskip);
         g.MapPost("/{id:guid}/items", SetItem);
         g.MapGet("/{id:guid}/history", History);
         g.MapPost("/{id:guid}/keep-day", KeepDay);
@@ -122,6 +124,33 @@ public static class ScheduleEndpoints
         return TypedResults.Ok(await Fresh(conn, user, id, await ScheduleStore.ClockAsync(conn, user), now));
     }
 
+    /// <summary>Skip the dose on purpose (the app asks first). Recorded, so skips can be counted later.</summary>
+    private static async Task<Results<Ok<ScheduleDto>, NotFound, ValidationProblem>> Skip(Guid id, SkipInput? body, HttpContext http, ScheduleStore store, TimeProvider time)
+    {
+        var user = http.User.UserId();
+        await using var conn = await store.Db.OpenAsync();
+        if (await ScheduleStore.GetAsync(conn, user, id) is not { } s) return TypedResults.NotFound();
+        var clock = await ScheduleStore.ClockAsync(conn, user);
+        var now = time.GetUtcNow().UtcDateTime;
+        await ScheduleStore.SyncAsync(conn, s, clock);
+        if (await store.SkipAsync(conn, s, clock, now, Reason(body?.Reason)) is { } problem) return Invalid(problem);
+        return TypedResults.Ok(await Fresh(conn, user, id, clock, now));
+    }
+
+    /// <summary>Undo today's skip.</summary>
+    private static async Task<Results<Ok<ScheduleDto>, NotFound, ValidationProblem>> Unskip(Guid id, HttpContext http, ScheduleStore store, TimeProvider time)
+    {
+        var user = http.User.UserId();
+        await using var conn = await store.Db.OpenAsync();
+        if (await ScheduleStore.GetAsync(conn, user, id) is not { } s) return TypedResults.NotFound();
+        var clock = await ScheduleStore.ClockAsync(conn, user);
+        var now = time.GetUtcNow().UtcDateTime;
+        if (!await ScheduleStore.UnskipAsync(conn, s, clock, now)) return Invalid("Nothing skipped today.");
+        return TypedResults.Ok(await Fresh(conn, user, id, clock, now));
+    }
+
+    private static string? Reason(string? r) => r?.Trim() is { Length: > 0 } t ? (t.Length > 200 ? t[..200] : t) : null;
+
     /// <summary>
     /// The doses that count for this schedule, newest first: its area's
     /// entries naming its medication (or, for a daily list, naming one of
@@ -137,7 +166,7 @@ public static class ScheduleEndpoints
             """
             select id, area, at, data::text, source, raw, created_at from entries
             where user_id = @user and area = @area
-              and coalesce(data->>'event', 'taken') = 'taken'
+              and coalesce(data->>'event', 'taken') in ('taken', 'skipped')
               and (
                 (@byItem and exists (select 1 from unnest(@names::text[]) n
                    where data->>'medication' ilike '%' || n || '%' or n ilike '%' || (data->>'medication') || '%'))
@@ -162,7 +191,7 @@ public static class ScheduleEndpoints
         if (await ScheduleStore.GetAsync(conn, user, id) is not { } s) return TypedResults.NotFound();
         var clock = await ScheduleStore.ClockAsync(conn, user);
         var now = time.GetUtcNow().UtcDateTime;
-        if (await store.SetItemAsync(conn, s, body.Item, body.State, body.RemindAt?.UtcDateTime, clock, now) is { } problem) return Invalid(problem);
+        if (await store.SetItemAsync(conn, s, body.Item, body.State, body.RemindAt?.UtcDateTime, clock, now, Reason(body.Reason)) is { } problem) return Invalid(problem);
         return TypedResults.Ok(await Fresh(conn, user, id, clock, now));
     }
 

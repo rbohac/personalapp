@@ -4,11 +4,36 @@
   "icon": "medical-outline",
   "kind": "log",
   "fields": [
-    { "key": "medication", "label": "Medication", "type": "text", "required": true },
-    { "key": "dose", "label": "Dose", "type": "text" },
-    { "key": "notes", "label": "Notes", "type": "text" }
+    {
+      "key": "event",
+      "label": "Event",
+      "type": "choice",
+      "options": [
+        "taken",
+        "skipped"
+      ],
+      "default": "taken"
+    },
+    {
+      "key": "medication",
+      "label": "Medication",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "dose",
+      "label": "Dose",
+      "type": "text"
+    },
+    {
+      "key": "notes",
+      "label": "Notes",
+      "type": "text"
+    }
   ],
-  "summary": "{medication} · {dose}",
-  "related": ["shots"],
+  "summary": "{event} \u00b7 {medication} \u00b7 {dose}",
+  "related": [
+    "shots"
+  ],
   "patterns": []
 }

@@ -124,7 +124,8 @@ const keyOf = (url: string) => url.startsWith(API_URL) ? url.slice(API_URL.lengt
 type Kind =
   | { t: "entry-create" } | { t: "entry-update"; id: string } | { t: "entry-delete"; id: string }
   | { t: "task-create" } | { t: "task-update"; id: string } | { t: "task-delete"; id: string } | { t: "task-done"; id: string; done: boolean }
-  | { t: "schedule-done"; id: string } | { t: "schedule-items"; id: string } | { t: "schedule-snooze"; id: string };
+  | { t: "schedule-done"; id: string } | { t: "schedule-items"; id: string } | { t: "schedule-snooze"; id: string }
+  | { t: "schedule-skip"; id: string };
 
 function kindOf(method: string, path: string): Kind | null {
   const p = path.split("?")[0];
@@ -134,8 +135,9 @@ function kindOf(method: string, path: string): Kind | null {
   if (method === "POST" && p === "/tasks") return { t: "task-create" };
   if ((m = p.match(/^\/tasks\/([^/]+)$/))) return method === "PUT" ? { t: "task-update", id: m[1] } : method === "DELETE" ? { t: "task-delete", id: m[1] } : null;
   if (method === "POST" && (m = p.match(/^\/tasks\/([^/]+)\/(complete|reopen)$/))) return { t: "task-done", id: m[1], done: m[2] === "complete" };
-  if (method === "POST" && (m = p.match(/^\/schedules\/([^/]+)\/(done|items|snooze)$/)))
-    return m[2] === "done" ? { t: "schedule-done", id: m[1] } : m[2] === "items" ? { t: "schedule-items", id: m[1] } : { t: "schedule-snooze", id: m[1] };
+  if (method === "POST" && (m = p.match(/^\/schedules\/([^/]+)\/(done|items|snooze|skip)$/)))
+    return m[2] === "done" ? { t: "schedule-done", id: m[1] } : m[2] === "items" ? { t: "schedule-items", id: m[1] }
+      : m[2] === "skip" ? { t: "schedule-skip", id: m[1] } : { t: "schedule-snooze", id: m[1] };
   return null;
 }
 
@@ -313,6 +315,7 @@ function apply(kind: Kind, body: Rec | null, localId: string | null): Rec | null
       return out;
     }
     case "schedule-items":
+    case "schedule-skip":
     case "schedule-done":
     case "schedule-snooze": {
       let out: Rec | null = null;
@@ -327,6 +330,9 @@ type Mark = { item: string; state: string; remindAt: string | null; byEntry: boo
 function scheduleAfter(s: Rec, kind: Kind, body: Rec | null): Rec {
   const today = ((s.today as Mark[]) ?? []).map((m) => ({ ...m }));
   const status = { ...(s.status as Rec) };
+  if (kind.t === "schedule-skip") {
+    return { ...s, status: { ...status, state: "done", label: "Skipped · waiting to sync" } };
+  }
   if (kind.t === "schedule-snooze") {
     return { ...s, snoozedUntil: new Date(Date.now() + Number(body?.minutes ?? 60) * 60e3).toISOString() };
   }

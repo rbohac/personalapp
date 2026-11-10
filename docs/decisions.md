@@ -520,3 +520,22 @@ crash at launch as a broken update (`ErrorRecovery.crash`).
 - The root layout exports an `ErrorBoundary`: a screen that throws while
   drawing shows "Something went wrong" with Try again and Clear saved
   copies, instead of taking the app down.
+
+## 2026-11-10 — Skipping a dose is a confirmed, recorded act
+
+A Skip button on medication and shot schedules (Home and the schedule page),
+and "Skip today" on a list item, each confirm first ("Skip Vyvanse?") with
+an optional reason ("flying today"). A skip is an **entry** with event
+"skipped" (and the reason in notes), linked to its schedule — the same table
+as a dose, so history, Ask Bo ("how often did I skip Vyvanse?") and any
+later report count it with no new store. Medications gained an `event`
+field (taken | skipped, default taken); shots gained "skipped".
+
+- A daily dose skipped today reads "Skipped today" and isn't nudged.
+- An every-N dose (testosterone) can be skipped once it's due, never ahead;
+  the next one is the next gap from today (a cycle moves on). Undo, the same
+  day, puts it back.
+- A list item's skip writes its entry too, so unticking removes it, as with
+  taken. Saying "skipped my Vyvanse" marks the item skipped the same way.
+- The schedule page shows skips in its history (with the reason) and how
+  many in the last 30 days.

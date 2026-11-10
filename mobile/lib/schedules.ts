@@ -1,3 +1,4 @@
+import { Alert } from "react-native";
 import * as Notifications from "expo-notifications";
 
 import { api, must, type Entry, type Schedule, type ScheduleInput } from "./api";
@@ -59,6 +60,40 @@ export async function markDone(id: string, dose?: string): Promise<Schedule> {
   return s;
 }
 
+/** Skip the dose on purpose. It's recorded (with the reason), so skips can be counted later. */
+export async function skipDose(id: string, reason?: string): Promise<Schedule> {
+  const s = must(await api.POST("/schedules/{id}/skip", { params: { path: { id } }, body: { reason: reason ?? null } }));
+  edited(true);
+  return s;
+}
+
+/** Undo today's skip. */
+export async function unskip(id: string): Promise<Schedule> {
+  const s = must(await api.DELETE("/schedules/{id}/skip", { params: { path: { id } } }));
+  edited(true);
+  return s;
+}
+
+/** Areas whose doses can be skipped (they record an event). */
+export const canSkipArea = (area: string) => area === "medications" || area === "shots";
+
+/**
+ * Ask before skipping, with room for a reason ("flying today"). A skip is
+ * on the record, so it's never one accidental tap.
+ */
+export function confirmSkip(name: string, onSkip: (reason: string | undefined) => void) {
+  Alert.prompt(
+    `Skip ${name}?`,
+    "It's recorded as skipped, so you can see how often later. A reason is optional.",
+    [
+      { text: "Cancel", style: "cancel" },
+      { text: "Skip", style: "destructive", onPress: (reason?: string) => onSkip(reason?.trim() || undefined) },
+    ],
+    "plain-text",
+    "",
+  );
+}
+
 export async function snooze(id: string, minutes = 60): Promise<Schedule> {
   const s = must(await api.POST("/schedules/{id}/snooze", { params: { path: { id } }, body: { minutes } }));
   edited();
@@ -68,11 +103,11 @@ export async function snooze(id: string, minutes = 60): Promise<Schedule> {
 export type ItemState = "taken" | "open" | "skipped" | "later";
 
 /** Tick one item of a daily list. "later" needs the time to be reminded. */
-export async function setItem(id: string, item: string, state: ItemState, remindAt?: Date): Promise<Schedule> {
+export async function setItem(id: string, item: string, state: ItemState, remindAt?: Date, reason?: string): Promise<Schedule> {
   const s = must(
     await api.POST("/schedules/{id}/items", {
       params: { path: { id } },
-      body: { item, state, remindAt: remindAt?.toISOString() ?? null },
+      body: { item, state, remindAt: remindAt?.toISOString() ?? null, reason: reason ?? null },
     }),
   );
   edited(true);
