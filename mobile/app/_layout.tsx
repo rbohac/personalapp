@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { ActivityIndicator, Alert, AppState, View } from "react-native";
-import { router, Stack } from "expo-router";
+import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, Text, View } from "react-native";
+import { router, Stack, type ErrorBoundaryProps } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -12,8 +12,38 @@ import { ensureNotificationPermission, registerReminderCategory, reminderActionO
 import { getTask, inputOf, setDone, updateTask } from "../lib/tasks";
 import { usePalette } from "../lib/theme";
 import { applyLatestUpdate } from "../lib/updates";
+import { clearCache } from "../lib/local";
 import { flush, wake, notify } from "../lib/offline";
 import { markDone, registerScheduleCategory, reportTimeZone, scheduleActionOf, setItem, snooze } from "../lib/schedules";
+
+/**
+ * A screen that throws while drawing shows this instead of taking the whole
+ * app down (expo-updates treats a crash at launch as a broken update). Try
+ * again re-renders; Clear saved copies drops the phone's cached reads, in
+ * case it's an old saved copy the new code can't read (2026-11-10).
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const c = usePalette();
+  return (
+    <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={{ padding: 24, paddingTop: 80, gap: 14 }}>
+      <Text style={{ color: c.ink, fontSize: 22, fontWeight: "700" }}>Something went wrong</Text>
+      <Text style={{ color: c.muted, fontSize: 15 }}>Bo hit an error drawing this screen. Nothing you logged is lost.</Text>
+      <Text style={{ color: c.danger, fontSize: 13 }} selectable>{error.message}</Text>
+      <Pressable onPress={() => void retry()} style={{ backgroundColor: c.accent, borderRadius: 12, padding: 14, alignItems: "center" }}>
+        <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>Try again</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => {
+          try { clearCache(); } catch { /* nothing to clear */ }
+          void retry();
+        }}
+        style={{ borderWidth: 1, borderColor: c.line, borderRadius: 12, padding: 14, alignItems: "center" }}
+      >
+        <Text style={{ color: c.ink, fontSize: 16 }}>Clear saved copies and try again</Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
 
 export default function RootLayout() {
   // New code arrives over the air; apply it on this launch instead of the next.

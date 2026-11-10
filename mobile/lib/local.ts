@@ -134,3 +134,8 @@ export function pendingSetResult(id: string, result: unknown): void {
 export function pendingDelete(id: string): void {
   db.runSync("delete from pending_captures where id = ?", id);
 }
+
+/** Drop every saved read (not the outbox, not offline captures): the next open fetches fresh. */
+export function clearCache(): void {
+  db.runSync("delete from cache where key not like 'meta:%'");
+}
