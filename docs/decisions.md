@@ -505,3 +505,18 @@ dose (`full_dose`: 0.8 ml).
 - A push's Done (no amount) logs the usual dose.
 - Migration 0016 sets the owner's testosterone up: due today (or in 4 days
   if today's was already logged), 0.4 ml by default.
+
+## 2026-11-10 — A crash on launch: new code reading an old saved copy
+
+The testosterone update (0.1.x OTA after #38) crashed at startup. Home
+draws from the snapshot saved on the phone before the server answers, and
+that snapshot predated the new `doseOptions` field, so
+`sch.doseOptions.length` threw while drawing Home; expo-updates treats a
+crash at launch as a broken update (`ErrorRecovery.crash`).
+
+- New fields are read through a helper with a fallback (`hasDoseChoices`,
+  `?? []`). **Rule: anything the app reads from the API may be missing in a
+  saved copy — default it.**
+- The root layout exports an `ErrorBoundary`: a screen that throws while
+  drawing shows "Something went wrong" with Try again and Clear saved
+  copies, instead of taking the app down.

@@ -104,8 +104,17 @@ export function inputOf(s: Schedule): ScheduleInput {
     title: s.title, area: s.area, everyDays: Number(s.everyDays), at: s.at,
     match: s.match, nextDue: s.nextDue, items: s.items, paused: s.paused, rotation: s.rotation,
     weekdays: s.weekdays.map(Number), dose: s.nextDose ?? "",
-    cycle: s.cycle.map(Number), doseOptions: s.doseOptions, fullDose: s.fullDose ?? "",
+    cycle: (s.cycle ?? []).map(Number), doseOptions: s.doseOptions ?? [], fullDose: s.fullDose ?? "",
   };
+}
+
+/**
+ * Whether logging asks how much (testosterone: 0.4, 0.5, full shot). Read
+ * defensively: a copy saved on the phone before these fields existed has
+ * none, and Home draws from that copy before the server answers.
+ */
+export function hasDoseChoices(s: Pick<Schedule, "doseOptions" | "fullDose">): boolean {
+  return (s.doseOptions?.length ?? 0) > 0 || !!s.fullDose;
 }
 
 /** "left-thigh" → "Left thigh". */

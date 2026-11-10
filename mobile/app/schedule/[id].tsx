@@ -8,7 +8,7 @@ import { useRemindPicker } from "../../components/RemindPicker";
 import type { Entry, Schedule } from "../../lib/api";
 import { whenLabel } from "../../lib/dates";
 import { onChanged } from "../../lib/events";
-import { cadenceLabel, itemName, listSchedules, markDone, nextDoseLabel, scheduleHistory, setItem, shortDate, type ItemState } from "../../lib/schedules";
+import { cadenceLabel, hasDoseChoices, itemName, listSchedules, markDone, nextDoseLabel, scheduleHistory, setItem, shortDate, type ItemState } from "../../lib/schedules";
 import { usePalette, type Palette } from "../../lib/theme";
 
 /**
@@ -96,7 +96,7 @@ export default function ScheduleView() {
   const next = nextDoseLabel(sch);
   const canLog = st !== "done" && st !== "paused" && st !== "finished";
   const byItem = sch.today.length > 0;
-  const choices = sch.doseOptions.length > 0 || !!sch.fullDose;
+  const choices = hasDoseChoices(sch);
   const open = sch.today.filter((m) => m.state === "open").map((m) => m.item);
   const days = byItem ? groupByDay(history) : [];
 

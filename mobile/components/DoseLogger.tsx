@@ -19,7 +19,7 @@ const plusDays = (n: number) => {
  * 3 days), a full one waits the whole week.
  */
 export function DoseLogger({ c, sch, busy, onLog }: { c: Palette; sch: Schedule; busy: boolean; onLog: (dose: string) => void }) {
-  const options = sch.doseOptions;
+  const options = sch.doseOptions ?? [];
   const usual = sch.nextDose && options.includes(sch.nextDose) ? sch.nextDose : options[0] ?? null;
   const [pick, setPick] = useState<string | null>(usual);
   const [custom, setCustom] = useState("");
@@ -28,7 +28,7 @@ export function DoseLogger({ c, sch, busy, onLog }: { c: Palette; sch: Schedule;
   const full = sch.fullDose;
   const dose = customOn ? custom.trim() : pick;
   const isFull = !customOn && full != null && pick === full;
-  const gap = isFull ? Number(sch.everyDays) : Number(sch.nextGap);
+  const gap = isFull ? Number(sch.everyDays) : Number(sch.nextGap ?? sch.everyDays);
   const ready = !!dose && !busy;
 
   return (
