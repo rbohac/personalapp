@@ -6,6 +6,7 @@ import { offlineFetch } from "./offline";
 import { getToken, setToken } from "./token";
 
 export type Task = components["schemas"]["TaskDto"];
+export type Checklist = components["schemas"]["ChecklistDto"];
 export type TaskInput = components["schemas"]["TaskInput"];
 export type User = components["schemas"]["UserDto"];
 export type Session = components["schemas"]["SessionDto"];

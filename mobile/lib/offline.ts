@@ -125,7 +125,8 @@ type Kind =
   | { t: "entry-create" } | { t: "entry-update"; id: string } | { t: "entry-delete"; id: string }
   | { t: "task-create" } | { t: "task-update"; id: string } | { t: "task-delete"; id: string } | { t: "task-done"; id: string; done: boolean }
   | { t: "schedule-done"; id: string } | { t: "schedule-items"; id: string } | { t: "schedule-snooze"; id: string }
-  | { t: "schedule-skip"; id: string };
+  | { t: "schedule-skip"; id: string }
+  | { t: "checklist-tick"; id: string; itemId: string } | { t: "checklist-reset"; id: string };
 
 function kindOf(method: string, path: string): Kind | null {
   const p = path.split("?")[0];
@@ -135,6 +136,8 @@ function kindOf(method: string, path: string): Kind | null {
   if (method === "POST" && p === "/tasks") return { t: "task-create" };
   if ((m = p.match(/^\/tasks\/([^/]+)$/))) return method === "PUT" ? { t: "task-update", id: m[1] } : method === "DELETE" ? { t: "task-delete", id: m[1] } : null;
   if (method === "POST" && (m = p.match(/^\/tasks\/([^/]+)\/(complete|reopen)$/))) return { t: "task-done", id: m[1], done: m[2] === "complete" };
+  if (method === "POST" && (m = p.match(/^\/checklists\/([^/]+)\/items\/([^/]+)$/))) return { t: "checklist-tick", id: m[1], itemId: m[2] };
+  if (method === "POST" && (m = p.match(/^\/checklists\/([^/]+)\/reset$/))) return { t: "checklist-reset", id: m[1] };
   if (method === "POST" && (m = p.match(/^\/schedules\/([^/]+)\/(done|items|snooze|skip)$/)))
     return m[2] === "done" ? { t: "schedule-done", id: m[1] } : m[2] === "items" ? { t: "schedule-items", id: m[1] }
       : m[2] === "skip" ? { t: "schedule-skip", id: m[1] } : { t: "schedule-snooze", id: m[1] };
@@ -312,6 +315,18 @@ function apply(kind: Kind, body: Rec | null, localId: string | null): Rec | null
     case "task-done": {
       let out: Rec | null = null;
       patch("/tasks", (l) => l.map((t) => (t.id === kind.id ? (out = { ...t, doneAt: kind.done ? now : null }) : t)));
+      return out;
+    }
+    case "checklist-tick":
+    case "checklist-reset": {
+      let out: Rec | null = null;
+      patch("/checklists", (l) => l.map((cl) => {
+        if (cl.id !== kind.id) return cl;
+        const items = ((cl.items as Rec[]) ?? []).map((i) =>
+          kind.t === "checklist-reset" ? { ...i, done: false } : i.id === kind.itemId ? { ...i, done: Boolean(body?.done) } : i);
+        out = { ...cl, items, doneCount: items.filter((i) => i.done).length };
+        return out;
+      }));
       return out;
     }
     case "schedule-items":

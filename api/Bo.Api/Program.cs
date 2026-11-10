@@ -61,5 +61,6 @@ app.MapVocabularyEndpoints();
 app.MapScheduleEndpoints();
 app.MapGoalEndpoints();
 app.MapAskTrendsEndpoints();
+app.MapChecklistEndpoints();
 
 app.Run();
