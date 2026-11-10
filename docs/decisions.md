@@ -539,3 +539,16 @@ field (taken | skipped, default taken); shots gained "skipped".
   taken. Saying "skipped my Vyvanse" marks the item skipped the same way.
 - The schedule page shows skips in its history (with the reason) and how
   many in the last 30 days.
+
+## 2026-11-10 — Checklists, starting with the packing list
+
+A briefcase button on Home opens the travel packing list: tap to tick while
+packing, "Start over" (confirmed) unticks everything for the next trip, and
+Edit is the list as plain text, one item per line (a line you keep keeps its
+tick). Lists live in `checklists` (migration 0017), one row per list with
+its items as JSON — one person edits a list, so there's nothing to merge.
+It's generic on purpose: another reusable list (a grocery run, a
+pre-flight list) is a new row, not new code. Ticks work offline.
+
+Seeded from the owner's list, with "Coap" read as CPAP and "Charger Mac" as
+Mac charger; everything else as written.

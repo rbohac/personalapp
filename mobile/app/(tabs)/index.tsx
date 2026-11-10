@@ -184,6 +184,9 @@ export default function HomeScreen() {
             {name ? `, ${name}` : ""}
           </Text>
         </View>
+        <Pressable onPress={() => router.push({ pathname: "/checklist/[id]", params: { id: "packing" } })} hitSlop={8} accessibilityLabel="Packing list">
+          <Ionicons name="briefcase-outline" size={26} color={c.accent} />
+        </Pressable>
         <Pressable onPress={() => router.push("/ask")} hitSlop={8} accessibilityLabel="Ask Bo">
           <Ionicons name="chatbubble-ellipses-outline" size={27} color={c.accent} />
         </Pressable>
