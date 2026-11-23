@@ -552,3 +552,11 @@ pre-flight list) is a new row, not new code. Ticks work offline.
 
 Seeded from the owner's list, with "Coap" read as CPAP and "Charger Mac" as
 Mac charger; everything else as written.
+
+## 2026-11-23 — Sermorelin stopped; Anastrozole weekly on Mondays
+
+Migration 0018 deletes the sermorelin schedule (its marks and nudges go with
+it; past doses stay in the log) and adds Anastrozole: medications, every 7
+days counted from the dose, due Mondays at 8:00, starting today. "Anastrazole"
+is a vocabulary mishearing so it's always written right. The starter file
+and the area notes follow.

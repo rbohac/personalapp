@@ -32,10 +32,7 @@ Add what you take and the usual dose:
   alternating left and right. The owner sets the dose, in **units** on the
   syringe (30 units now, stepping up 35, 40 …); keep it as said, "35 units".
   Often heard as "tor appetite", "teresa appetite".
-- testosterone — weekly, in the thigh, alternating left and right
-- sermorelin (sermorelin acetate, 2 mg/ml, 10 ml vial) — 15 units (0.15 ml),
-  Monday to Friday, in the belly, alternating sides each day and never on
-  the same side as a tirzepatide shot the same day. Often heard as "Sam
-  Marlin". "sermorelin, left" is `left-abdomen`.
+- testosterone — twice a week (4 days, then 3), a half dose in ml (0.4 or
+  0.5; a full 0.8 when away a week), in the thigh, alternating left and right
 - Leqvio (inclisiran) — given by the doctor every few months; a past one
   said with its date ("my Leqvio was June 3rd") is logged at that date
