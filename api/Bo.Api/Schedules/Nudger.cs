@@ -111,6 +111,18 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
         }
     }
 
+    /// <summary>Pushier each time, as asked.</summary>
+    private static string NagTitle(ScheduleRow s, int n) => n switch
+    {
+        1 => $"{s.Title}: not logged yet",
+        2 => $"{s.Title} — still waiting",
+        3 => $"Take your {s.Title.ToLowerInvariant()}. Now.",
+        _ => $"{s.Title}: reminder {n + 1}. It's not going away.",
+    };
+
+    private static string NagBody(ScheduleRow s, int n) =>
+        (n == 0 ? "Time for today's reading." : "No reading today yet.") + " Tap to log it — these keep coming until you do.";
+
     private static string Cap(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     /// <summary>
@@ -169,6 +181,26 @@ public sealed class Nudger(Db db, ExpoPush push, Goals.GoalStore goals, TimeProv
             body = partial ? $"Not taken yet: {string.Join(", ", left)}. Tap to tick it off or pick a time." : string.Join(", ", left);
             category = ListCategory;
             data = new { kind = "schedule", scheduleId = s.Id, ask = partial };
+        }
+
+        // A reading to log (blood pressure): the tap opens the form, and there's no Done to press.
+        if (s.LogsReading)
+        {
+            data = new { kind = "schedule-log", scheduleId = s.Id, area = s.Area };
+            category = null;
+        }
+
+        // Nag times (blood pressure): push again at each one until it's logged.
+        // Only the latest passed time is owed, so a restart never sends a backlog.
+        if (s.Daily && s.NagMinutes.Length > 0 && !snoozedToday)
+        {
+            var nowMin = clock.Local(now).Hour * 60 + clock.Local(now).Minute;
+            var passed = s.NagMinutes.Order().Where(m => m > s.AtMinute && m <= nowMin).ToArray();
+            if (passed.Length == 0)
+                yield return (today, "due", new PushMessage(s.Title, NagBody(s, 0), data, category));
+            else
+                yield return (today, $"nag-{passed[^1]}", new PushMessage(NagTitle(s, passed.Length), NagBody(s, passed.Length), data, category));
+            yield break;
         }
 
         // Each kind is claimed once per day. A snooze replaces the follow-up.

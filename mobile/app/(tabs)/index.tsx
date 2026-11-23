@@ -424,15 +424,17 @@ function Card({ c, sch, busy, onAct, onAskWhen }: { c: Palette; sch: Schedule; b
           <Pressable
             // A shot with dose choices (half, custom, full) asks how much, on its page.
             onPress={() =>
-              hasDoseChoices(sch)
-                ? router.push({ pathname: "/schedule/[id]", params: { id: sch.id, log: "1" } })
-                : onAct(sch.id, (id) => markDone(id))
+              sch.logsReading && !byItem
+                ? router.push({ pathname: "/entry/[id]", params: { id: "new", area: sch.area } })
+                : hasDoseChoices(sch)
+                  ? router.push({ pathname: "/schedule/[id]", params: { id: sch.id, log: "1" } })
+                  : onAct(sch.id, (id) => markDone(id))
             }
             disabled={busy}
             style={[s.done, { backgroundColor: st === "upcoming" || st === "later" ? c.bg : c.accent, borderColor: c.accent, opacity: busy ? 0.5 : 1 }]}
           >
             <Text style={{ color: st === "upcoming" || st === "later" ? c.accent : c.accentInk, fontSize: 15, fontWeight: "600" }}>
-              {hasDoseChoices(sch) ? "Log dose…" : st === "upcoming" ? "Log it now" : byItem ? "Took all" : "Done"}
+              {sch.logsReading && !byItem ? "Log reading" : hasDoseChoices(sch) ? "Log dose…" : st === "upcoming" ? "Log it now" : byItem ? "Took all" : "Done"}
             </Text>
           </Pressable>
           {!byItem && canSkipArea(sch.area) && st !== "upcoming" ? (

@@ -148,9 +148,11 @@ export default function ScheduleView() {
         {next ? <Line c={c} label="Next dose" value={next} /> : null}
         <Line c={c} label="Last taken" value={sch.lastDoneAt ? whenLabel(sch.lastDoneAt) : "Not logged yet"} />
         {skips30 > 0 ? <Line c={c} label="Skipped, last 30 days" value={`${skips30}×`} /> : null}
+        {sch.nagTimes?.length ? <Line c={c} label="Keeps reminding" value={[sch.at, ...sch.nagTimes].map(clock).join(", ")} /> : null}
         {canLog && !byItem && !choices ? (
-          <Pressable onPress={() => void done()} disabled={busy} style={[s.button, { backgroundColor: c.accent, opacity: busy ? 0.5 : 1 }]}>
-            <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>{st === "upcoming" ? "Log one now" : "Done"}</Text>
+          <Pressable
+            onPress={() => (sch.logsReading ? router.push({ pathname: "/entry/[id]", params: { id: "new", area: sch.area } }) : void done())} disabled={busy} style={[s.button, { backgroundColor: c.accent, opacity: busy ? 0.5 : 1 }]}>
+            <Text style={{ color: c.accentInk, fontSize: 16, fontWeight: "600" }}>{sch.logsReading ? "Log reading" : st === "upcoming" ? "Log one now" : "Done"}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -233,6 +235,14 @@ function groupByDay(entries: Entry[]) {
     if (!row.names.includes(name)) row.names.push(name);
   }
   return out;
+}
+
+/** "14:00" → "2 PM", "09:30" → "9:30 AM". */
+function clock(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString(undefined, m ? { hour: "numeric", minute: "2-digit" } : { hour: "numeric" });
 }
 
 function Line({ c, label, value }: { c: Palette; label: string; value: string }) {

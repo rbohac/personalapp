@@ -16,11 +16,13 @@ namespace Bo.Api.Schedules;
 /// <param name="DoseOptions">Amounts offered when logging a dose ("0.4 ml").</param>
 /// <param name="FullDose">The full amount: logging it waits EveryDays instead of the next gap.</param>
 /// <param name="NextGap">Days until the one after, if the next dose is a normal one.</param>
+/// <param name="NagTimes">Extra reminders ("12:00", "14:00"…) pushed while today's isn't logged.</param>
+/// <param name="LogsReading">Done means logging a reading (blood pressure), not ticking a dose: the app opens the form.</param>
 public record ScheduleDto(
     Guid Id, string Title, string Area, string? Match, int EveryDays, string At, string? NextDue,
     string? ShiftedFrom, string[] Items, bool Paused, DateTime? SnoozedUntil, DateTime? LastDoneAt, ScheduleStatus Status,
     ItemMark[] Today, string[] Rotation, string? NextSite, string? NextDose, int[] Weekdays,
-    int[] Cycle, string[] DoseOptions, string? FullDose, int NextGap);
+    int[] Cycle, string[] DoseOptions, string? FullDose, int NextGap, string[] NagTimes, bool LogsReading);
 
 /// <summary>
 /// One item of a daily schedule's list, today. State is open (still to take),
@@ -41,7 +43,7 @@ public record ScheduleStatus(string State, DateTime? DueAt, int DaysLate, string
 public record ScheduleInput(
     string Title, string Area, int EveryDays, string At, string? Match = null, string? NextDue = null,
     string[]? Items = null, bool Paused = false, string[]? Rotation = null, int[]? Weekdays = null, string? Dose = null,
-    int[]? Cycle = null, string[]? DoseOptions = null, string? FullDose = null);
+    int[]? Cycle = null, string[]? DoseOptions = null, string? FullDose = null, string[]? NagTimes = null);
 
 /// <summary>Skip a dose on purpose; the reason is kept with it ("flying today").</summary>
 public record SkipInput(string? Reason = null);
@@ -80,6 +82,9 @@ internal sealed class ScheduleRow
     public int CyclePos { get; set; }
     public string[] DoseOptions { get; set; } = [];
     public string? FullDose { get; set; }
+    public int[] NagMinutes { get; set; } = [];
+    /// <summary>Done is a reading to log (blood pressure), not a dose: anything outside medications and shots.</summary>
+    public bool LogsReading => Area is not ("medications" or "shots");
     public bool Paused { get; set; }
     public DateTime? SnoozedUntil { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -88,7 +93,7 @@ internal sealed class ScheduleRow
         "id, user_id as userid, title, area, match_text as matchtext, every_days as everydays, at_minute as atminute, " +
         "next_due::text as nextdue, shifted_from::text as shiftedfrom, last_entry_at as lastentryat, items, rotation, " +
         "intervals, doses_done as dosesdone, heads_up_days as headsupdays, weekdays, dose, dose_set_at as dosesetat, opposite_of as oppositeof, paused, " +
-        "cycle, cycle_pos as cyclepos, dose_options as doseoptions, full_dose as fulldose, " +
+        "cycle, cycle_pos as cyclepos, dose_options as doseoptions, full_dose as fulldose, nag_minutes as nagminutes, " +
         "snoozed_until as snoozeduntil, created_at as createdat";
 
     public bool Daily => EveryDays == 1;

@@ -82,7 +82,11 @@ async function followSchedule(a: NonNullable<ReturnType<typeof scheduleActionOf>
 async function follow(r: Notifications.NotificationResponse) {
   const sa = scheduleActionOf(r);
   if (sa) return followSchedule(sa);
-  if ((r.notification.request.content.data as { kind?: unknown } | undefined)?.kind === "goals") return void router.navigate("/");
+  const data = r.notification.request.content.data as { kind?: unknown; area?: unknown } | undefined;
+  if (data?.kind === "goals") return void router.navigate("/");
+  // A reading to take (blood pressure): straight to its form.
+  if (data?.kind === "schedule-log" && typeof data.area === "string")
+    return void router.push({ pathname: "/entry/[id]", params: { id: "new", area: data.area } });
   const a = reminderActionOf(r);
   if (!a) return;
   try {
