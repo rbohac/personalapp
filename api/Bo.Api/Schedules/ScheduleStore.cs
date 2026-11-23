@@ -318,7 +318,7 @@ public sealed class ScheduleStore(Db db, AreaCatalog catalog)
         return new ScheduleDto(s.Id, s.Title, s.Area, s.MatchText, s.EveryDays, ScheduleLogic.Hhmm(s.AtMinute), s.NextDue,
             s.ShiftedFrom, s.Items, s.Paused, s.SnoozedUntil, last, status, marks, s.Rotation,
             await NextSiteAsync(conn, s, clock, utcNow), await NextDoseAsync(conn, s), s.Weekdays,
-            s.Cycle, s.DoseOptions, s.FullDose, s.NextGap);
+            s.Cycle, s.DoseOptions, s.FullDose, s.NextGap, s.NagMinutes.Order().Select(ScheduleLogic.Hhmm).ToArray(), s.LogsReading);
     }
 
     private sealed record MarkRow(string Item, string State, Guid? EntryId, DateTime? RemindAt);

@@ -560,3 +560,17 @@ it; past doses stay in the log) and adds Anastrozole: medications, every 7
 days counted from the dose, due Mondays at 8:00, starting today. "Anastrazole"
 is a vocabulary mishearing so it's always written right. The starter file
 and the area notes follow.
+
+## 2026-11-23 — Blood pressure every day, and reminders that don't let up
+
+A daily **Blood pressure** schedule: due 9:00, then pushed again at noon, 2,
+4, 6 and 8 PM until a reading is logged (10 PM is quiet hours). Any reading
+in the blood-pressure area counts. Owner: "bug the shit out of me".
+
+- `nag_minutes` (migration 0019) is generic: extra times of day a daily
+  schedule pushes again while today's isn't done. Only the latest passed
+  time is owed, claimed once a day, so a restart never sends a backlog; the
+  2-hour follow-up is skipped for these. Titles get pushier each time.
+- A schedule outside medications/shots `LogsReading`: Done means taking a
+  reading, so the button says "Log reading" and opens the area's form, and
+  the push has no Done button — tapping it opens the form.

@@ -2496,6 +2496,8 @@ export interface components {
             fullDose: null | string;
             /** Format: int32 */
             nextGap: number | string;
+            nagTimes: string[];
+            logsReading: boolean;
         };
         ScheduleInput: {
             title: string;
@@ -2514,6 +2516,7 @@ export interface components {
             cycle?: null | (number | string)[];
             doseOptions?: null | string[];
             fullDose?: null | string;
+            nagTimes?: null | string[];
         };
         ScheduleStatus: {
             state: string;

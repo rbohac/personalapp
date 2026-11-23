@@ -67,12 +67,12 @@ public static class ScheduleEndpoints
         var id = await conn.ExecuteScalarAsync<Guid>(
             """
             insert into schedules (user_id, title, area, match_text, every_days, at_minute, next_due, items, paused, rotation, weekdays, dose,
-              cycle, dose_options, full_dose)
+              cycle, dose_options, full_dose, nag_minutes)
             values (@user, @Title, @Area, @Match, @EveryDays, @AtMinute, @NextDue::date, @Items, @Paused, @Rotation, coalesce(@Weekdays, '{}'), @Dose,
-              coalesce(@Cycle, '{}'), coalesce(@DoseOptions, '{}'), nullif(@FullDose, ''))
+              coalesce(@Cycle, '{}'), coalesce(@DoseOptions, '{}'), nullif(@FullDose, ''), coalesce(@NagMinutes, '{}'))
             returning id
             """,
-            new { user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose, c.Cycle, c.DoseOptions, c.FullDose });
+            new { user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose, c.Cycle, c.DoseOptions, c.FullDose, c.NagMinutes });
         var s = (await ScheduleStore.GetAsync(conn, user, id))!;
         return TypedResults.Created($"/schedules/{id}", await ScheduleStore.DtoAsync(conn, s, clock, now));
     }
@@ -97,10 +97,11 @@ public static class ScheduleEndpoints
               cycle = coalesce(@Cycle, cycle),
               dose_options = coalesce(@DoseOptions, dose_options),
               full_dose = case when @FullDose::text is null then full_dose else nullif(@FullDose, '') end,
+              nag_minutes = coalesce(@NagMinutes, nag_minutes),
               updated_at = now()
             where id = @id and user_id = @user
             """,
-            new { id, user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose, c.Cycle, c.DoseOptions, c.FullDose });
+            new { id, user, c.Title, c.Area, c.Match, c.EveryDays, c.AtMinute, c.NextDue, c.Items, c.Paused, c.Rotation, c.Weekdays, c.Dose, c.Cycle, c.DoseOptions, c.FullDose, c.NagMinutes });
         if (n == 0) return TypedResults.NotFound();
         return TypedResults.Ok(await Fresh(conn, user, id, clock, now));
     }
@@ -240,7 +241,7 @@ public static class ScheduleEndpoints
     }
 
     private sealed record Cleaned(string Title, string Area, string? Match, int EveryDays, int AtMinute, string? NextDue, string[] Items, bool Paused, string[] Rotation, int[]? Weekdays, string? Dose,
-        int[]? Cycle, string[]? DoseOptions, string? FullDose);
+        int[]? Cycle, string[]? DoseOptions, string? FullDose, int[]? NagMinutes);
 
     private static Cleaned? Clean(ScheduleInput b, ScheduleStore store, DateOnly today)
     {
@@ -266,7 +267,8 @@ public static class ScheduleEndpoints
         string[]? options = b.DoseOptions?.Select(o => o.Trim()).Where(o => o.Length > 0).Select(o => o.Length > 30 ? o[..30] : o).Distinct().Take(6).ToArray();
         var full = b.FullDose is null ? null : b.FullDose.Trim() is { Length: > 0 } f ? (f.Length > 30 ? f[..30] : f) : "";
         return new Cleaned(b.Title.Trim(), b.Area, match, every, ScheduleLogic.Minute(b.At)!.Value, next, items, b.Paused, rotation, weekdays, dose,
-            cycle, options, full);
+            cycle, options, full,
+            b.NagTimes?.Select(ScheduleLogic.Minute).OfType<int>().Distinct().Order().Take(12).ToArray());
     }
 
     private static string? Problem(ScheduleInput b, ScheduleStore store) =>
