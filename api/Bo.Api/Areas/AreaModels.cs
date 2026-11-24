@@ -34,6 +34,10 @@ public sealed record AreaField
     public string? FalseLabel { get; init; }
     public JsonElement? Default { get; init; }
     public bool Required { get; init; }
+    /// <summary>Placeholder text in the form ("8:30 or 30 min ago").</summary>
+    public string? Hint { get; init; }
+    /// <summary>One-tap answers shown under the field ("just now", "30 min ago").</summary>
+    public string[]? Quick { get; init; }
 }
 
 public sealed record AreaList(string Id, string Label);

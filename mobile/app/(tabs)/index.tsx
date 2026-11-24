@@ -155,7 +155,9 @@ export default function HomeScreen() {
   const hour = new Date().getHours();
   // The morning card shows from 4 am until last night is logged.
   const todayKey = new Date().toDateString();
-  const sleepPending = hour >= 4 && known && !recent.some((e) => e.area === "sleep" && new Date(e.at).toDateString() === todayKey);
+  // A sleep entry holding only the wake time (from a blood pressure reading) still asks for the rest.
+  const sleepToday = recent.find((e) => e.area === "sleep" && new Date(e.at).toDateString() === todayKey);
+  const sleepPending = hour >= 4 && known && (!sleepToday || sleepToday.data.bed === undefined);
   const greeting = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
 
   return (
@@ -245,7 +247,7 @@ export default function HomeScreen() {
 
       {error ? <Text style={{ color: c.danger, fontSize: 14 }}>{error}</Text> : null}
 
-      {sleepPending ? <LastNight c={c} onSaved={() => void load()} /> : null}
+      {sleepPending ? <LastNight c={c} existing={sleepToday} onSaved={() => void load()} /> : null}
 
       {now.length > 0 ? <Heading c={c} text="NOW" /> : null}
       {now.map((sch) => (

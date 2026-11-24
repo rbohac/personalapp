@@ -574,3 +574,18 @@ in the blood-pressure area counts. Owner: "bug the shit out of me".
 - A schedule outside medications/shots `LogsReading`: Done means taking a
   reading, so the button says "Log reading" and opens the area's form, and
   the push has no Done button — tapping it opens the form.
+
+## 2026-11-24 — Blood pressure notes and "woke up", which feeds the sleep log
+
+A reading has optional **Notes** (the circumstances — coffee, stress, a salty
+dinner — kept in his words so Ask Bo can look for patterns) and an optional
+**Woke up**: a clock time ("8:30a", "0745", "7 am") or relative to the
+reading ("30 min ago", "an hour ago", "just now"). The server stores it as
+HH:mm and writes it to that day's sleep entry as the waking time — updating
+the night's entry if there is one, else starting one with just the wake time.
+Unreadable is refused in words. The morning sleep card still asks for the
+rest of a wake-only entry, prefilled with the wake time, and fills it in
+rather than adding a second.
+
+Area fields can now carry a `hint` (placeholder) and `quick` answers (chips
+under the field); "woke" offers just now / 15 / 30 min / 1 hour ago.

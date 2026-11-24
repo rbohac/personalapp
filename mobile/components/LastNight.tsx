@@ -3,7 +3,8 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View 
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 
-import { createEntry } from "../lib/areas";
+import type { Entry } from "../lib/api";
+import { createEntry, updateEntry } from "../lib/areas";
 import type { Palette } from "../lib/theme";
 
 type Snack = "none" | "yes" | "carbs";
@@ -35,10 +36,19 @@ const NAPS: { label: string; min: number }[] = [
  * especially carbs), CPAP and a nap. One line until opened; gone once
  * last night is logged.
  */
-export function LastNight({ c, onSaved }: { c: Palette; onSaved: () => void }) {
+/** "08:30" → today at 8:30. */
+const fromHhmm = (hhmm: unknown): Date | null => {
+  const m = typeof hhmm === "string" ? hhmm.match(/^(\d{1,2}):(\d{2})$/) : null;
+  return m ? at(Number(m[1]), Number(m[2])) : null;
+};
+
+export function LastNight({ c, onSaved, existing }: { c: Palette; onSaved: () => void; existing?: Entry }) {
   const [open, setOpen] = useState(false);
   const [bed, setBed] = useState(at(23, 0, 1));
   const [wake, setWake] = useState(() => {
+    // Already known from this morning's blood pressure reading.
+    const known = fromHhmm(existing?.data.wake);
+    if (known) return known;
     const now = new Date();
     return now.getHours() < 7 ? now : at(7);
   });
@@ -65,7 +75,9 @@ export function LastNight({ c, onSaved }: { c: Palette; onSaved: () => void }) {
       if (cpapHours.trim()) data.cpap_hours = Number(cpapHours.replace(",", "."));
       if (cpapScore.trim()) data.cpap_score = Number(cpapScore);
       if (nap !== null) data.nap_minutes = nap;
-      await createEntry({ area: "sleep", data: data as never, source: "manual" });
+      // A wake-only entry (from a blood pressure reading) is filled in, not doubled.
+      if (existing) await updateEntry(existing.id, { area: "sleep", data: { ...existing.data, ...data } as never, source: "manual" });
+      else await createEntry({ area: "sleep", data: data as never, source: "manual" });
       onSaved();
     } catch (e) {
       Alert.alert("Not saved", e instanceof Error ? e.message : "The server didn't take it.");
@@ -78,7 +90,9 @@ export function LastNight({ c, onSaved }: { c: Palette; onSaved: () => void }) {
     return (
       <Pressable onPress={() => setOpen(true)} style={[s.card, s.row, { backgroundColor: c.card, borderColor: c.line }]}>
         <Ionicons name="moon-outline" size={20} color={c.accent} />
-        <Text style={{ color: c.ink, fontSize: 16, flex: 1 }}>How was last night?</Text>
+        <Text style={{ color: c.ink, fontSize: 16, flex: 1 }}>
+          How was last night?{existing?.data.wake ? ` · up at ${String(existing.data.wake)}` : ""}
+        </Text>
         <Text style={{ color: c.accent, fontSize: 15, fontWeight: "600" }}>Log it</Text>
       </Pressable>
     );

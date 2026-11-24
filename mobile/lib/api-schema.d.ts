@@ -2206,6 +2206,8 @@ export interface components {
             falseLabel?: null | string;
             default?: null | components["schemas"]["JsonElement"];
             required?: boolean;
+            hint?: null | string;
+            quick?: null | string[];
         };
         AreaList: {
             id: string;

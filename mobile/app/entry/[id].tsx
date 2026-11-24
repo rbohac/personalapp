@@ -198,10 +198,19 @@ function Field({ f, c, value, onChange }: { f: AreaField; c: Palette; value: str
           keyboardType={f.type === "integer" ? "number-pad" : f.type === "number" ? "decimal-pad" : "default"}
           multiline={f.type === "text"}
           placeholderTextColor={c.muted}
-          placeholder={f.min != null ? `${f.min}–${f.max}` : ""}
+          placeholder={f.hint ?? (f.min != null ? `${f.min}–${f.max}` : "")}
           style={[s.input, { color: c.ink }]}
         />
       )}
+      {f.quick?.length ? (
+        <View style={s.chips}>
+          {f.quick.map((q) => (
+            <Pressable key={q} onPress={() => onChange(value === q ? undefined : q)} style={[s.chip, { borderColor: value === q ? c.accent : c.line }]}>
+              <Text style={{ color: value === q ? c.accent : c.ink, fontSize: 14 }}>{q}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
