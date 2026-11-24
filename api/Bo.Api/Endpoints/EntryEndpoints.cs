@@ -58,7 +58,7 @@ public static class EntryEndpoints
         return row is null ? TypedResults.NotFound() : TypedResults.Ok(Row.ToDto(row, catalog));
     }
 
-    private static async Task<Results<Created<EntryDto>, ValidationProblem>> Create(EntryInput body, HttpContext http, Db db, AreaCatalog catalog, CancellationToken ct)
+    private static async Task<Results<Created<EntryDto>, ValidationProblem>> Create(EntryInput body, HttpContext http, Db db, AreaCatalog catalog, Bo.Api.Caffeine.CaffeineEstimator caffeine, CancellationToken ct)
     {
         var (data, problem) = Check(body, catalog);
         if (problem is not null) return problem;
@@ -67,6 +67,7 @@ public static class EntryEndpoints
         var atUtc = (body.At ?? DateTimeOffset.UtcNow).UtcDateTime;
         var (woke, wokeProblem) = await WokeAsync(conn, user, body.Area, data!, atUtc);
         if (wokeProblem is not null) return wokeProblem;
+        if (await CaffeineAsync(caffeine, user, body.Area, data!, ct) is { } cProblem) return cProblem;
         var row = await conn.QuerySingleAsync<EntryRow>(
             $"""
             insert into entries (user_id, area, at, data, source, raw, ai_usage_id)
@@ -83,7 +84,7 @@ public static class EntryEndpoints
         return TypedResults.Created($"/entries/{row.Id}", Row.ToDto(row, catalog));
     }
 
-    private static async Task<Results<Ok<EntryDto>, NotFound, ValidationProblem>> Update(Guid id, EntryInput body, HttpContext http, Db db, AreaCatalog catalog, CancellationToken ct)
+    private static async Task<Results<Ok<EntryDto>, NotFound, ValidationProblem>> Update(Guid id, EntryInput body, HttpContext http, Db db, AreaCatalog catalog, Bo.Api.Caffeine.CaffeineEstimator caffeine, CancellationToken ct)
     {
         var (data, problem) = Check(body, catalog);
         if (problem is not null) return problem;
@@ -94,6 +95,7 @@ public static class EntryEndpoints
             ?? DateTime.UtcNow;
         var (woke, wokeProblem) = await WokeAsync(conn, user, body.Area, data!, atUtc);
         if (wokeProblem is not null) return wokeProblem;
+        if (await CaffeineAsync(caffeine, user, body.Area, data!, ct) is { } cProblem) return cProblem;
         // The area and the original source stay what they were; an edit changes the reading and its time.
         var row = await conn.QuerySingleOrDefaultAsync<EntryRow>(
             $"""
@@ -112,6 +114,22 @@ public static class EntryEndpoints
         await using var conn = await db.OpenAsync(ct);
         var n = await conn.ExecuteAsync("delete from entries where id = @id and user_id = @user", new { id, user = http.User.UserId() });
         return n == 0 ? TypedResults.NotFound() : TypedResults.NoContent();
+    }
+
+    /// <summary>
+    /// A caffeine entry with no mg: filled from his usual drinks or estimated,
+    /// and "estimate" says which. A number he typed always stands.
+    /// </summary>
+    private static async Task<ValidationProblem?> CaffeineAsync(Bo.Api.Caffeine.CaffeineEstimator est, Guid user, string area, Dictionary<string, object?> data, CancellationToken ct)
+    {
+        if (area != "caffeine") return null;
+        if (data.GetValueOrDefault("mg") is not null) return null;
+        var drink = data.GetValueOrDefault("drink") as string ?? "";
+        if (await est.EstimateAsync(user, drink, ct) is not { } e)
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["mg"] = [$"Couldn't estimate the caffeine in \"{drink}\" — type the mg."] });
+        data["mg"] = (long)e.Mg;
+        data["estimate"] = e.Basis;
+        return null;
     }
 
     /// <summary>

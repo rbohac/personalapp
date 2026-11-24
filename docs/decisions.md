@@ -589,3 +589,18 @@ rather than adding a second.
 
 Area fields can now carry a `hint` (placeholder) and `quick` answers (chips
 under the field); "woke" offers just now / 15 / 30 min / 1 hour ago.
+
+## 2026-11-24 — Caffeine: when, how much, and an estimate when unsure
+
+A `caffeine` area: one entry per drink (drink, mg, estimated-from, notes) at
+the time it was had. Home has a card with today's total (red at 400 mg, the
+usual daily ceiling), each drink with its time, one-tap buttons for his
+three usuals, and Other… for anything else.
+
+- **mg is optional.** Logged without a number, the server fills it in: his
+  usuals from a table (Pike K-Cup ~130, Advocare Spark 120, Celsius 200 —
+  typical published amounts; a typed number always wins), anything else by
+  the model with a one-line basis, recorded as AI feature "caffeine". The
+  basis is kept in `estimate`, and model estimates show "(est.)".
+- Said by voice ("had a Celsius at 2") it arrives through capture the same
+  way, so the time and the mg come out right without a form.

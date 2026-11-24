@@ -5,6 +5,7 @@ import { router, Tabs, useFocusEffect, useLocalSearchParams, useScrollToTop } fr
 import { Ionicons } from "@expo/vector-icons";
 
 import { AreaIcon } from "../../components/AreaIcon";
+import { CaffeineCard } from "../../components/CaffeineCard";
 import { LastNight } from "../../components/LastNight";
 import { useRemindPicker } from "../../components/RemindPicker";
 import type { Entry, Goal, ItemMark, Schedule, Task } from "../../lib/api";
@@ -248,6 +249,8 @@ export default function HomeScreen() {
       {error ? <Text style={{ color: c.danger, fontSize: 14 }}>{error}</Text> : null}
 
       {sleepPending ? <LastNight c={c} existing={sleepToday} onSaved={() => void load()} /> : null}
+
+      <CaffeineCard c={c} entries={recent} onLogged={() => void load()} />
 
       {now.length > 0 ? <Heading c={c} text="NOW" /> : null}
       {now.map((sch) => (
