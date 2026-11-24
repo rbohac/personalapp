@@ -1,0 +1,14 @@
+{
+  "id": "caffeine",
+  "name": "Caffeine",
+  "icon": "cafe-outline",
+  "kind": "log",
+  "fields": [
+    { "key": "drink", "label": "Drink", "type": "text", "required": true, "hint": "What you had", "quick": ["Starbucks Pike K-Cup", "Advocare Spark", "Celsius"] },
+    { "key": "mg", "label": "Caffeine", "type": "integer", "unit": "mg", "min": 0, "max": 1000, "hint": "Leave blank and Bo estimates it" },
+    { "key": "estimate", "label": "Estimated from", "type": "text" },
+    { "key": "notes", "label": "Notes", "type": "text" }
+  ],
+  "summary": "{drink} · {mg} mg",
+  "patterns": []
+}
