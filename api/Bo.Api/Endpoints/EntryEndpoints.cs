@@ -63,6 +63,10 @@ public static class EntryEndpoints
         var (data, problem) = Check(body, catalog);
         if (problem is not null) return problem;
         await using var conn = await db.OpenAsync(ct);
+        var user = http.User.UserId();
+        var atUtc = (body.At ?? DateTimeOffset.UtcNow).UtcDateTime;
+        var (woke, wokeProblem) = await WokeAsync(conn, user, body.Area, data!, atUtc);
+        if (wokeProblem is not null) return wokeProblem;
         var row = await conn.QuerySingleAsync<EntryRow>(
             $"""
             insert into entries (user_id, area, at, data, source, raw, ai_usage_id)
@@ -72,9 +76,10 @@ public static class EntryEndpoints
             """,
             new
             {
-                user = http.User.UserId(), area = body.Area, at = (body.At ?? DateTimeOffset.UtcNow).UtcDateTime,
+                user, area = body.Area, at = atUtc,
                 data = JsonSerializer.Serialize(data), source = body.Source, raw = body.Raw, aiUsageId = body.AiUsageId,
             });
+        if (woke is { } w) await WakeTime.WriteToSleepAsync(conn, user, w.Zone, atUtc, w.Hhmm);
         return TypedResults.Created($"/entries/{row.Id}", Row.ToDto(row, catalog));
     }
 
@@ -83,6 +88,12 @@ public static class EntryEndpoints
         var (data, problem) = Check(body, catalog);
         if (problem is not null) return problem;
         await using var conn = await db.OpenAsync(ct);
+        var user = http.User.UserId();
+        var atUtc = body.At?.UtcDateTime
+            ?? await conn.ExecuteScalarAsync<DateTime?>("select at from entries where id = @id and user_id = @user", new { id, user })
+            ?? DateTime.UtcNow;
+        var (woke, wokeProblem) = await WokeAsync(conn, user, body.Area, data!, atUtc);
+        if (wokeProblem is not null) return wokeProblem;
         // The area and the original source stay what they were; an edit changes the reading and its time.
         var row = await conn.QuerySingleOrDefaultAsync<EntryRow>(
             $"""
@@ -90,8 +101,10 @@ public static class EntryEndpoints
             where id = @id and user_id = @user and area = @area
             returning {Row.Columns}
             """,
-            new { id, user = http.User.UserId(), area = body.Area, at = body.At?.UtcDateTime, data = JsonSerializer.Serialize(data) });
-        return row is null ? TypedResults.NotFound() : TypedResults.Ok(Row.ToDto(row, catalog));
+            new { id, user, area = body.Area, at = body.At?.UtcDateTime, data = JsonSerializer.Serialize(data) });
+        if (row is null) return TypedResults.NotFound();
+        if (woke is { } w) await WakeTime.WriteToSleepAsync(conn, user, w.Zone, atUtc, w.Hhmm);
+        return TypedResults.Ok(Row.ToDto(row, catalog));
     }
 
     private static async Task<Results<NoContent, NotFound>> Delete(Guid id, HttpContext http, Db db, CancellationToken ct)
@@ -99,6 +112,22 @@ public static class EntryEndpoints
         await using var conn = await db.OpenAsync(ct);
         var n = await conn.ExecuteAsync("delete from entries where id = @id and user_id = @user", new { id, user = http.User.UserId() });
         return n == 0 ? TypedResults.NotFound() : TypedResults.NoContent();
+    }
+
+    /// <summary>
+    /// A blood pressure reading's "woke up" ("30 min ago", "8:30a"): stored as
+    /// HH:mm, and handed back to be written to the sleep log once the reading
+    /// is saved. Unreadable is a problem in words, not a silent drop.
+    /// </summary>
+    private static async Task<((string Zone, string Hhmm)? Woke, ValidationProblem? Problem)> WokeAsync(
+        Npgsql.NpgsqlConnection conn, Guid user, string area, Dictionary<string, object?> data, DateTime atUtc)
+    {
+        if (area != "blood-pressure" || data.GetValueOrDefault(WakeTime.Field) is not string said || said.Trim().Length == 0) return (null, null);
+        var clock = await Bo.Api.Schedules.ScheduleStore.ClockAsync(conn, user);
+        if (WakeTime.Parse(said, clock.Local(atUtc)) is not { } hhmm)
+            return (null, TypedResults.ValidationProblem(new Dictionary<string, string[]> { [WakeTime.Field] = ["Woke up: try a time like 8:30 or \"30 min ago\"."] }));
+        data[WakeTime.Field] = hhmm;
+        return ((clock.Zone.Id, hhmm), null);
     }
 
     private static (Dictionary<string, object?>? Data, ValidationProblem? Problem) Check(EntryInput body, AreaCatalog catalog)
